@@ -1,0 +1,26 @@
+{
+  "name": "typesc-sdk-sample",
+  "version": "1.0.0",
+  "description": "A sample project for generating SDKs from TypeSpec definitions.",
+  "main": "index.js",
+  "scripts": {
+    "generate-sdk": "bash scripts/generate-sdk.sh"
+  },
+  "dependencies": {
+    "@azure-tools/typespec-csharp": "^0.2.0-beta.20250610.2",
+    "@typespec/http": "^1.1.0",
+    "@typespec/openapi3": "^1.1.0",
+    "typescript": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^14.0.0",
+    "@typespec/compiler": "^1.1.0"
+  },
+  "keywords": [
+    "typesc",
+    "sdk",
+    "api"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

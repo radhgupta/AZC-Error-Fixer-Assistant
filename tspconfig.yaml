@@ -1,0 +1,12 @@
+# emit:
+#   - "@azure-tools/typespec-csharp"
+# linter:
+#   extends:
+#     - "@typespec/http/all"
+
+emit:
+  - "@azure-tools/typespec-csharp"
+options:
+  "@azure-tools/typespec-csharp":
+    output-dir: ./generated
+

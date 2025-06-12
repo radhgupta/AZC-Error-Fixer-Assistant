@@ -1,0 +1,21 @@
+# Node modules and TypeSpec output
+node_modules/
+tsp-output/
+dist/
+build/
+*.log
+
+# VS Code settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dotnet build output
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo

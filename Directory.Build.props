@@ -1,0 +1,10 @@
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<PropertyGroup>
+<NoWarn>
+AZC0007;AZC0015
+</NoWarn>
+</PropertyGroup>
+<ItemGroup>
+    <Analyzer Include="C:\Users\radhgupta\Desktop\azure-sdk-tools\artifacts\bin\Azure.ClientSdk.Analyzers\Release\netstandard2.0\Azure.ClientSdk.Analyzers.dll" />
+  </ItemGroup>
+</Project>
