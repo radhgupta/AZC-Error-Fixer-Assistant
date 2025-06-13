@@ -3,8 +3,16 @@
 <NoWarn>
 AZC0007;AZC0015
 </NoWarn>
+<!-- <RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild> -->
 </PropertyGroup>
 <ItemGroup>
-    <Analyzer Include="C:\Users\radhgupta\Desktop\azure-sdk-tools\artifacts\bin\Azure.ClientSdk.Analyzers\Release\netstandard2.0\Azure.ClientSdk.Analyzers.dll" />
-  </ItemGroup>
+    <PackageReference Include="Azure.ClientSdk.Analyzers" Version="0.1.1-dev.20250422.1" />
+    <PackageReference Include="System.ClientModel" Version="1.4.1" />
+    <PackageReference Include="Azure.Core" Version="1.46.1" />
+</ItemGroup>
+<PropertyGroup>
+<RequiredTargetFrameworks>net8.0</RequiredTargetFrameworks>
+ <AzureCoreSharedSources>C:\Users\radhgupta\Desktop\azure-sdk-for-net\sdk\core\Azure.Core\src\Shared\</AzureCoreSharedSources>
+</PropertyGroup>
+ 
 </Project>

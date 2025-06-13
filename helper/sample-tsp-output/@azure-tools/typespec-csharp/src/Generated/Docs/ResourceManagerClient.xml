@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<doc>
+  <members>
+    <member name="GetNumberAsync(DiskOptions,CancellationToken)">
+      <example>
+This sample shows how to call GetNumberAsync.
+<code><![CDATA[
+Uri endpoint = new Uri("<endpoint>");
+ResourceManagerClient client = new ResourceManagerClient(endpoint);
+
+DiskOptions foo = new DiskOptions(1234);
+Response<Wrapper> response = await client.GetNumberAsync(foo);
+]]></code>
+This sample shows how to call GetNumberAsync with all parameters.
+<code><![CDATA[
+Uri endpoint = new Uri("<endpoint>");
+ResourceManagerClient client = new ResourceManagerClient(endpoint);
+
+DiskOptions foo = new DiskOptions(1234);
+Response<Wrapper> response = await client.GetNumberAsync(foo);
+]]></code></example>
+    </member>
+    <member name="GetNumber(DiskOptions,CancellationToken)">
+      <example>
+This sample shows how to call GetNumber.
+<code><![CDATA[
+Uri endpoint = new Uri("<endpoint>");
+ResourceManagerClient client = new ResourceManagerClient(endpoint);
+
+DiskOptions foo = new DiskOptions(1234);
+Response<Wrapper> response = client.GetNumber(foo);
+]]></code>
+This sample shows how to call GetNumber with all parameters.
+<code><![CDATA[
+Uri endpoint = new Uri("<endpoint>");
+ResourceManagerClient client = new ResourceManagerClient(endpoint);
+
+DiskOptions foo = new DiskOptions(1234);
+Response<Wrapper> response = client.GetNumber(foo);
+]]></code></example>
+    </member>
+    <member name="GetNumberAsync(RequestContent,RequestContext)">
+      <example>
+This sample shows how to call GetNumberAsync and parse the result.
+<code><![CDATA[
+Uri endpoint = new Uri("<endpoint>");
+ResourceManagerClient client = new ResourceManagerClient(endpoint);
+
+using RequestContent content = RequestContent.Create(new
+{
+    value = 1234,
+});
+Response response = await client.GetNumberAsync(content);
+
+JsonElement result = JsonDocument.Parse(response.ContentStream).RootElement;
+Console.WriteLine(result.GetProperty("options").GetProperty("value").ToString());
+]]></code>
+This sample shows how to call GetNumberAsync with all request content and parse the result.
+<code><![CDATA[
+Uri endpoint = new Uri("<endpoint>");
+ResourceManagerClient client = new ResourceManagerClient(endpoint);
+
+using RequestContent content = RequestContent.Create(new
+{
+    value = 1234,
+});
+Response response = await client.GetNumberAsync(content);
+
+JsonElement result = JsonDocument.Parse(response.ContentStream).RootElement;
+Console.WriteLine(result.GetProperty("options").GetProperty("value").ToString());
+]]></code></example>
+    </member>
+    <member name="GetNumber(RequestContent,RequestContext)">
+      <example>
+This sample shows how to call GetNumber and parse the result.
+<code><![CDATA[
+Uri endpoint = new Uri("<endpoint>");
+ResourceManagerClient client = new ResourceManagerClient(endpoint);
+
+using RequestContent content = RequestContent.Create(new
+{
+    value = 1234,
+});
+Response response = client.GetNumber(content);
+
+JsonElement result = JsonDocument.Parse(response.ContentStream).RootElement;
+Console.WriteLine(result.GetProperty("options").GetProperty("value").ToString());
+]]></code>
+This sample shows how to call GetNumber with all request content and parse the result.
+<code><![CDATA[
+Uri endpoint = new Uri("<endpoint>");
+ResourceManagerClient client = new ResourceManagerClient(endpoint);
+
+using RequestContent content = RequestContent.Create(new
+{
+    value = 1234,
+});
+Response response = client.GetNumber(content);
+
+JsonElement result = JsonDocument.Parse(response.ContentStream).RootElement;
+Console.WriteLine(result.GetProperty("options").GetProperty("value").ToString());
+]]></code></example>
+    </member>
+  </members>
+</doc>

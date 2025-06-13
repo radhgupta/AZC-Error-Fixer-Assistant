@@ -2,17 +2,17 @@ import "@typespec/http";
 
 using TypeSpec.Http;
 
-model BadResponse {
-    value: int32;
-}
-
-model Wrapper {
-    bad: BadResponse;
-}
-
 @service(#{title: "Sample API"})
-namespace SampleApi {
+namespace Azure.ResourceManager {
+    model DiskOptions {
+        value: int32;
+    }
+
+    model Wrapper {
+        options: DiskOptions;
+    }
+
     @route("/number")
     @get
-    op GetNumber(): Wrapper;
+    op GetNumber(@body foo: DiskOptions): Wrapper;
 }
