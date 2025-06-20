@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace AzcAnalyzerFixer.Services
 {
@@ -16,32 +18,31 @@ namespace AzcAnalyzerFixer.Services
         private PersistentAgent agent;
         private readonly string model;
         private readonly string projectEndpoint;
+
         private const string AzcQueryPrompt = @"You are an expert on Azure SDK naming conventions and the AZC0030 analyzer rule (model names ending in disallowed suffixes Request, Response, Options).
-                                        I will give you:
-                                        1) A TypeSpec file.
-                                        2) A list of AZC0030 errors, each referring to a model name that ends with one of the forbidden suffixes.
+                                                I will give you:
+                                                1) A TypeSpec file.
+                                                2) A list of AZC0030 errors, each referring to a model name that ends with one of the forbidden suffixes.
+         
+                                                You have access to one tool:
+                                                • file_search(path: string) → returns the *full contents* of that file.
 
-                                        For each error, produce exactly one JSON object with these three properties:
-                                        - OriginalName: the name as it appears in the TSP (including the forbidden suffix).
-                                        - SuggestedName: a new PascalCase name without the forbidden suffix, following Azure SDK guidelines.
-                                        - Reason: a brief explanation why the new name better represents the model’s purpose.
+                                                When you need the files, emit exactly:
 
-                                        Return the complete result as a single JSON array. No extra text.
+                                                CALL_TOOL: file_search(\'main.tsp.txt\')  
+                                                CALL_TOOL: file_search(\'azc-errors.txt\')
 
-                                        Example output:
+                                                Once you have both files, output *only* this JSON schema, with no extra characters, no markdown fences, no commentary:
 
-                                        [
-                                        {
-                                            'OriginalName': 'VirtualMachineOptions',
-                                            'SuggestedName': 'VirtualMachineProperties',
-                                            'Reason': 'This model represents VM properties/state, not input options.'
-                                        },
-                                        {
-                                            'OriginalName': 'AssetChainResponse',
-                                            'SuggestedName': 'AssetChainResult',
-                                            'Reason': 'Response suffix is reserved for raw HTTP responses; Result better describes the payload.'
-                                        }
-                                        ]";
+                                                {
+                                                ""suggestions"": [
+                                                    { ""OriginalName"": string, ""SuggestedName"": string, ""Reason"": string }
+                                                ],
+                                                ""updatedTsp"": string
+                                                }
+
+                                                Make sure the entire response is a single JSON object matching that schema and nothing else.
+                                                ";
 
         public AzcAgentService(string projectEndpoint, string model = "gpt-35-turbo")
         {
@@ -53,6 +54,16 @@ namespace AzcAnalyzerFixer.Services
             this.projectEndpoint = projectEndpoint;
             this.model = model;
             client = new PersistentAgentsClient(projectEndpoint, new DefaultAzureCredential());
+        }
+
+        public async Task fixAzcErrorsAsync(string mainTsp, string logPath)
+        {
+            await TestConnectionAsync(CancellationToken.None);
+            await DeleteAgents(CancellationToken.None);
+            var uploadedFiles = await TestFileUploadAsync(logPath, mainTsp, CancellationToken.None);
+            var vectorStoreId = await CreateVectorStoreAsync(uploadedFiles, CancellationToken.None);
+            string suggestion = await GetAgentSuggestionsAsync(vectorStoreId, mainTsp, CancellationToken.None);
+            await CreateUpdatedFileAsync(suggestion, mainTsp);
         }
 
         private async Task TestConnectionAsync(CancellationToken ct)
@@ -292,21 +303,42 @@ namespace AzcAnalyzerFixer.Services
             return tempPath;
         }
 
-        public async Task fixAzcErrorsAsync(string mainTsp, string logPath)
+        private async Task CreateUpdatedFileAsync(string suggestion, string mainTsp)
         {
-            await TestConnectionAsync(CancellationToken.None);
-            await DeleteAgents(CancellationToken.None);
-            var uploadedFiles = await TestFileUploadAsync(logPath, mainTsp, CancellationToken.None);
-            var vectorStoreId = await CreateVectorStoreAsync(uploadedFiles, CancellationToken.None);
-            string suggestion = await GetAgentSuggestionsAsync(vectorStoreId, mainTsp, CancellationToken.None);
-            if (string.IsNullOrEmpty(suggestion))
+            var start = suggestion.IndexOf('{');
+            var end = suggestion.LastIndexOf('}');
+            if (start < 0 || end < 0 || end <= start)
+                throw new Exception("No JSON object found in agent response:\n" + suggestion);
+
+            var jsonPayload = suggestion.Substring(start, end - start + 1);
+            var result = JsonSerializer.Deserialize<AzcFixResult>(jsonPayload, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (result?.UpdatedTsp == null)
             {
                 Console.WriteLine("No suggestions found for AZC0030 errors.");
                 return;
             }
-            Console.WriteLine($"Suggestions found: {suggestion}");
 
+            // 1) Backup the original
+            var backupPath = mainTsp + ".bak";
+            File.Copy(mainTsp, backupPath, overwrite: true);
+            Console.WriteLine($"Backup of original created at {backupPath}");
 
+            // 2) Overwrite main.tsp
+            File.WriteAllText(mainTsp, result.UpdatedTsp);
+            Console.WriteLine($"main.tsp has been updated in place.");
+        }
+        
+        private class AzcFixResult
+        {
+            public List<AzcFixSuggestion> Suggestions { get; set; }
+            public string UpdatedTsp { get; set; }
+        }
+
+        private class AzcFixSuggestion
+        {
+            public string OriginalName   { get; set; }
+            public string SuggestedName  { get; set; }
+            public string Reason         { get; set; }
         }
 
     }

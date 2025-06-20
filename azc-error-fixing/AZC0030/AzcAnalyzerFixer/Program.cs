@@ -9,7 +9,7 @@ namespace AzcAnalyzerFixer
     {
         static async Task Main(string[] args)
         {
-            string projectEndpoint = "https://sdk-analyzer-fixer-resource.services.ai.azure.com/api/projects/sdk-analyzer-fixer";
+            string projectEndpoint = "https://dotnet-sdk-analyzer-fix-resource.services.ai.azure.com/api/projects/dotnet-sdk-analyzer-fixer";
             string model = "gpt-35-turbo";
             string mainTsp = @"C:\Users\radhgupta\Desktop\typespec\typesc-sdk-sample\src\main.tsp";
             string logPath = @"C:\Users\radhgupta\Desktop\typespec\typesc-sdk-sample\log\azc-errors.txt";
