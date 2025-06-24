@@ -15,7 +15,7 @@ namespace AzcAnalyzerFixer.Services
     public class AzcAgentService
     {
         private readonly PersistentAgentsClient client;
-        private PersistentAgent agent;
+        private PersistentAgent? agent;
         private readonly string model;
         private readonly string projectEndpoint;
 
@@ -54,16 +54,14 @@ namespace AzcAnalyzerFixer.Services
             this.projectEndpoint = projectEndpoint;
             this.model = model;
             client = new PersistentAgentsClient(projectEndpoint, new DefaultAzureCredential());
-        }
-
-        public async Task fixAzcErrorsAsync(string mainTsp, string logPath)
+        }        public async Task fixAzcErrorsAsync(string mainTsp, string logPath)
         {
-            await TestConnectionAsync(CancellationToken.None);
-            await DeleteAgents(CancellationToken.None);
-            var uploadedFiles = await TestFileUploadAsync(logPath, mainTsp, CancellationToken.None);
-            var vectorStoreId = await CreateVectorStoreAsync(uploadedFiles, CancellationToken.None);
-            string suggestion = await GetAgentSuggestionsAsync(vectorStoreId, mainTsp, CancellationToken.None);
-            await CreateUpdatedFileAsync(suggestion, mainTsp);
+            await TestConnectionAsync(CancellationToken.None).ConfigureAwait(false);
+            await DeleteAgents(CancellationToken.None).ConfigureAwait(false);
+            var uploadedFiles = await TestFileUploadAsync(logPath, mainTsp, CancellationToken.None).ConfigureAwait(false);
+            var vectorStoreId = await CreateVectorStoreAsync(uploadedFiles, CancellationToken.None).ConfigureAwait(false);
+            string suggestion = await GetAgentSuggestionsAsync(vectorStoreId, mainTsp, CancellationToken.None).ConfigureAwait(false);
+            await CreateUpdatedFileAsync(suggestion, mainTsp).ConfigureAwait(false);
         }
 
         private async Task TestConnectionAsync(CancellationToken ct)
@@ -77,39 +75,39 @@ namespace AzcAnalyzerFixer.Services
 
         private async Task DeleteAgents(CancellationToken ct = default)
         {
-            System.Console.WriteLine($"Deleting agents in project '{projectEndpoint}'");
+            // System.Console.WriteLine($"Deleting agents in project '{projectEndpoint}'"); 
             AsyncPageable<PersistentAgent> agents = client.Administration.GetAgentsAsync(cancellationToken: ct);
-            await foreach (var agent in agents)
+            await foreach (var agent in agents.ConfigureAwait(false))
             {
-                System.Console.WriteLine($"Deleting agent {agent.Id} ({agent.Name})");
-                await client.Administration.DeleteAgentAsync(agent.Id, ct);
+                // System.Console.WriteLine($"Deleting agent {agent.Id} ({agent.Name})");
+                await client.Administration.DeleteAgentAsync(agent.Id, ct).ConfigureAwait(false);
             }
 
             AsyncPageable<PersistentAgentThread> threads = client.Threads.GetThreadsAsync(cancellationToken: ct);
-            await foreach (var thread in threads)
+            await foreach (var thread in threads.ConfigureAwait(false))
             {
-                System.Console.WriteLine($"Deleting thread {thread.Id}");
-                await client.Threads.DeleteThreadAsync(thread.Id, ct);
+                // System.Console.WriteLine($"Deleting thread {thread.Id}");
+                await client.Threads.DeleteThreadAsync(thread.Id, ct).ConfigureAwait(false);
             }
 
             AsyncPageable<PersistentAgentsVectorStore> vectorStores = client.VectorStores.GetVectorStoresAsync(cancellationToken: ct);
-            await foreach (var vectorStore in vectorStores)
+            await foreach (var vectorStore in vectorStores.ConfigureAwait(false))
             {
-                System.Console.WriteLine($"Deleting vector store {vectorStore.Id} ({vectorStore.Name})");
-                await client.VectorStores.DeleteVectorStoreAsync(vectorStore.Id, ct);
+                // System.Console.WriteLine($"Deleting vector store {vectorStore.Id} ({vectorStore.Name})");
+                await client.VectorStores.DeleteVectorStoreAsync(vectorStore.Id, ct).ConfigureAwait(false);
             }
 
-            var files = await client.Files.GetFilesAsync(cancellationToken: ct);
+            var files = await client.Files.GetFilesAsync(cancellationToken: ct).ConfigureAwait(false);
             foreach (var file in files.Value)
             {
-                System.Console.WriteLine($"Deleting file {file.Id} ({file.Filename})");
-                await client.Files.DeleteFileAsync(file.Id, ct);
+                // System.Console.WriteLine($"Deleting file {file.Id} ({file.Filename})");
+                await client.Files.DeleteFileAsync(file.Id, ct).ConfigureAwait(false);
             }
         }
 
         private async Task<List<string>> TestFileUploadAsync(string logPath, string mainTspPath, CancellationToken ct)
         {
-            Console.WriteLine("Starting file upload test...");
+            // Console.WriteLine("Starting file upload test...");
 
             // Create a temporary .txt copy of the .tsp file
             var mainTspTxtPath = CreateTempTextCopy(mainTspPath);
@@ -120,12 +118,12 @@ namespace AzcAnalyzerFixer.Services
             {
                 try
                 {
-                    Console.WriteLine($"Uploading file: {Path.GetFileName(file)}");
-                    var uploadResult = await client.Files.UploadFileAsync(file, PersistentAgentFilePurpose.Agents, ct);
+                    // Console.WriteLine($"Uploading file: {Path.GetFileName(file)}");
+                    var uploadResult = await client.Files.UploadFileAsync(file, PersistentAgentFilePurpose.Agents, ct).ConfigureAwait(false);
                     if (uploadResult?.Value?.Id != null)
                     {
                         uploadedFileIds.Add(uploadResult.Value.Id);
-                        Console.WriteLine($"Successfully uploaded {Path.GetFileName(file)}. File ID: {uploadResult.Value.Id}");
+                        // Console.WriteLine($"Successfully uploaded {Path.GetFileName(file)}. File ID: {uploadResult.Value.Id}");
                     }
                 }
                 catch (Exception ex)
@@ -141,7 +139,7 @@ namespace AzcAnalyzerFixer.Services
                 if (File.Exists(mainTspTxtPath))
                 {
                     File.Delete(mainTspTxtPath);
-                    Console.WriteLine("Cleaned up temporary TSP text file");
+                    // Console.WriteLine("Cleaned up temporary TSP text file");
                 }
             }
             catch (Exception ex)
@@ -156,15 +154,15 @@ namespace AzcAnalyzerFixer.Services
         {
             try
             {
-                Console.WriteLine("Creating vector store from uploaded files...");
+                // Console.WriteLine("Creating vector store from uploaded files...");
                 var vectorStore = await client.VectorStores.CreateVectorStoreAsync(
                     uploadedFileIds,
                     name: "azc-session",
-                    cancellationToken: ct);
+                    cancellationToken: ct).ConfigureAwait(false);
 
                 if (vectorStore?.Value?.Id != null)
                 {
-                    Console.WriteLine($"Successfully created vector store. ID: {vectorStore.Value.Id}");
+                    // Console.WriteLine($"Successfully created vector store. ID: {vectorStore.Value.Id}");
                     return vectorStore.Value.Id;
                 }
                 else
@@ -183,14 +181,13 @@ namespace AzcAnalyzerFixer.Services
         {
             try
             {
-                Console.WriteLine("Creating a thread for agent analysis...");
+                // Console.WriteLine("Creating a thread for agent analysis...");
 
                 // Set up the tools for the agent
                 var fileSearchTool = new FileSearchToolResource();
-                fileSearchTool.VectorStoreIds.Add(vectorStoreId);
-
+                fileSearchTool.VectorStoreIds.Add(vectorStoreId); 
                 // Create or update the agent with file search capability
-                Console.WriteLine($"Creating agent with file search capability using model: {model}...");
+                // Console.WriteLine($"Creating agent with file search capability using model: {model}...");
                 agent = await client.Administration.CreateAgentAsync(
                     model: model,
                     name: "AZC0030 fixer Agent",
@@ -198,29 +195,27 @@ namespace AzcAnalyzerFixer.Services
                     tools: new[] { new FileSearchToolDefinition() },
                     toolResources: new ToolResources { FileSearch = fileSearchTool },
                     cancellationToken: ct
-                );
+                ).ConfigureAwait(false);
 
                 if (agent == null || string.IsNullOrEmpty(agent.Id))
                 {
                     throw new Exception("Failed to create agent - no agent ID returned");
                 }
-
                 // Create a thread and send initial message
-                Console.WriteLine("Creating thread...");
-                PersistentAgentThread thread = await client.Threads.CreateThreadAsync(cancellationToken: ct);
+                // Console.WriteLine("Creating thread...");
+                PersistentAgentThread thread = await client.Threads.CreateThreadAsync(cancellationToken: ct).ConfigureAwait(false);
 
                 if (thread == null || string.IsNullOrEmpty(thread.Id))
                 {
                     throw new Exception("Failed to create thread - no thread ID returned");
                 }
-
                 //Create a message in the thread to start the conversation
-                Console.WriteLine("Creating initial message...");
+                // Console.WriteLine("Creating initial message...");
                 var message = await client.Messages.CreateMessageAsync(
                     thread.Id,
                     MessageRole.User,
                     "Please analyze the files for AZC0030 errors and suggest appropriate fixes following Azure SDK naming conventions.",
-                    cancellationToken: ct);
+                    cancellationToken: ct).ConfigureAwait(false);
 
                 if (message == null)
                 {
@@ -229,7 +224,7 @@ namespace AzcAnalyzerFixer.Services
 
                 // Start the analysis
                 Console.WriteLine("Starting agent analysis...");
-                ThreadRun run = await client.Runs.CreateRunAsync(thread.Id, agent.Id);
+                ThreadRun run = await client.Runs.CreateRunAsync(thread.Id, agent.Id).ConfigureAwait(false);
 
                 if (run == null || string.IsNullOrEmpty(run.Id))
                 {
@@ -238,13 +233,13 @@ namespace AzcAnalyzerFixer.Services
 
                 // Wait for the analysis to complete
                 int attempts = 0;
-                const int maxAttempts = 60; // 5 minutes max wait time
+                const int maxAttempts = 60; // 5 minutes max wait time 
 
                 do
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(5), ct);
-                    run = await client.Runs.GetRunAsync(thread.Id, run.Id);
-                    Console.WriteLine($"Run status: {run.Status} (Attempt {attempts + 1}/{maxAttempts})");
+                    await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+                    run = await client.Runs.GetRunAsync(thread.Id, run.Id).ConfigureAwait(false);
+                    // Console.WriteLine($"Run status: {run.Status} (Attempt {attempts + 1}/{maxAttempts})");
                     attempts++;
 
                     if (attempts >= maxAttempts)
@@ -254,7 +249,7 @@ namespace AzcAnalyzerFixer.Services
                 }
                 while (run.Status == RunStatus.Queued || run.Status == RunStatus.InProgress);
 
-                Console.WriteLine($"Analysis completed with status: {run.Status}");
+                // Console.WriteLine($"Analysis completed with status: {run.Status}");
 
                 if (run.Status == RunStatus.Failed)
                 {
@@ -263,15 +258,14 @@ namespace AzcAnalyzerFixer.Services
                 }
 
                 // Get the messages
-                Console.WriteLine("Retrieving analysis results...");
+                // Console.WriteLine("Retrieving analysis results...");
                 AsyncPageable<PersistentThreadMessage> messages = client.Messages.GetMessagesAsync(
                     threadId: thread.Id,
                     order: ListSortOrder.Ascending);
 
                 var response = new List<string>();
-
-                Console.WriteLine("\nRaw AI Response:");
-                await foreach (var textmessage in messages)
+                // Console.WriteLine("\nRaw AI Response:");
+                await foreach (var textmessage in messages.ConfigureAwait(false))
                 {
                     foreach (var content in textmessage.ContentItems)
                     {
@@ -299,11 +293,11 @@ namespace AzcAnalyzerFixer.Services
         {
             var tempPath = Path.ChangeExtension(tspPath, ".txt");
             File.Copy(tspPath, tempPath, true); // Overwrite if exists
-            Console.WriteLine($"Created temporary copy of TSP file at: {tempPath}");
+            // Console.WriteLine($"Created temporary copy of TSP file at: {tempPath}");
             return tempPath;
         }
 
-        private async Task CreateUpdatedFileAsync(string suggestion, string mainTsp)
+        private Task CreateUpdatedFileAsync(string suggestion, string mainTsp)
         {
             var start = suggestion.IndexOf('{');
             var end = suggestion.LastIndexOf('}');
@@ -315,7 +309,7 @@ namespace AzcAnalyzerFixer.Services
             if (result?.UpdatedTsp == null)
             {
                 Console.WriteLine("No suggestions found for AZC0030 errors.");
-                return;
+                return Task.CompletedTask;
             }
 
             // 1) Backup the original
@@ -326,19 +320,21 @@ namespace AzcAnalyzerFixer.Services
             // 2) Overwrite main.tsp
             File.WriteAllText(mainTsp, result.UpdatedTsp);
             Console.WriteLine($"main.tsp has been updated in place.");
+
+            return Task.CompletedTask;
         }
         
         private class AzcFixResult
         {
-            public List<AzcFixSuggestion> Suggestions { get; set; }
-            public string UpdatedTsp { get; set; }
+            public List<AzcFixSuggestion>? Suggestions { get; set; }
+            public string? UpdatedTsp { get; set; }
         }
 
         private class AzcFixSuggestion
         {
-            public string OriginalName   { get; set; }
-            public string SuggestedName  { get; set; }
-            public string Reason         { get; set; }
+            public string? OriginalName   { get; set; }
+            public string? SuggestedName  { get; set; }
+            public string? Reason         { get; set; }
         }
 
     }

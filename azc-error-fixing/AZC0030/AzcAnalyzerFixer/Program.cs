@@ -14,12 +14,10 @@ namespace AzcAnalyzerFixer
             string mainTsp = @"C:\Users\radhgupta\Desktop\typespec\typesc-sdk-sample\src\main.tsp";
             string logPath = @"C:\Users\radhgupta\Desktop\typespec\typesc-sdk-sample\log\azc-errors.txt";
 
-            Console.WriteLine("Testing connection to AI Foundry...");
             var agentService = new AzcAgentService(projectEndpoint, model);
-            
             try
             {
-                await agentService.fixAzcErrorsAsync(mainTsp, logPath);
+                await agentService.fixAzcErrorsAsync(mainTsp, logPath).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
