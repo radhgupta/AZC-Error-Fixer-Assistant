@@ -71,6 +71,7 @@ Provide ONLY a JSON response with complete fixes for ALL identified AZC violatio
 }
 
 CRITICAL: 
+- Ensure the returned TypeSpec uses the TypeSpec 1.0+ syntax with object literals format: @service(#{title: ""Sample API""})  and enum format: enum SampleEnum { value1 : 1, value2 : 2 }
 - Ensure the returned TypeSpec is syntactically valid so that when we compile it we don't get any errors, with all necessary decorators and a proper service declaration.
 - Update ALL references when renaming models
 - Verify that all referenced models exist in the updated file
@@ -301,7 +302,7 @@ CRITICAL:
                 }
 
                 // Start the analysis
-                Console.WriteLine("Starting agent analysis...");
+                Console.WriteLine("⏳ Starting agent analysis...\n");
                 ThreadRun run = await client.Runs.CreateRunAsync(thread.Id, agent.Id).ConfigureAwait(false);
 
                 if (run == null || string.IsNullOrEmpty(run.Id))
@@ -371,7 +372,7 @@ CRITICAL:
         {
             var tempPath = Path.ChangeExtension(tspPath, ".txt");
             File.Copy(tspPath, tempPath, true); // Overwrite if exists
-            Console.WriteLine($"Created temporary copy of TSP file at: {tempPath}");
+            // Console.WriteLine($"Created temporary copy of TSP file at: {tempPath}");
             return tempPath;
         }
 
@@ -380,7 +381,7 @@ CRITICAL:
         {
             try
             {
-                Console.WriteLine("Processing agent response...");
+                Console.WriteLine("⏳ Processing agent response...\n");
                 
                 // Extract JSON from response
                 var jsonPayload = ExtractJsonFromResponse(suggestion);
@@ -407,7 +408,7 @@ CRITICAL:
 
                 // Update file
                 await File.WriteAllTextAsync(mainTsp, result.UpdatedTsp);
-                Console.WriteLine($"Successfully updated {Path.GetFileName(mainTsp)}");
+                Console.WriteLine($"✅ Successfully updated {Path.GetFileName(mainTsp)}");
 
                 // Log changes
                 // if (result.Analysis != null)

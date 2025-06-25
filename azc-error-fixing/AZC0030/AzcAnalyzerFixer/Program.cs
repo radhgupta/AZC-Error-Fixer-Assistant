@@ -1,4 +1,4 @@
-﻿using AzcAnalyzerFixer.Services;
+using AzcAnalyzerFixer.Services;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,11 +46,11 @@ namespace AzcAnalyzerFixer
 
                     if (errorsFixed)
                     {
-                        Console.WriteLine("All AZC errors have been fixed.");
+                        Console.WriteLine("✅  All AZC errors have been fixed. \n");
                     }
                     else
                     {
-                        Console.WriteLine("Some AZC errors remain. Proceeding to the next iteration.");
+                        Console.WriteLine("⚙️ Some AZC errors remain. Proceeding to the next iteration.");
                     }
                 }
                 if (!errorsFixed)

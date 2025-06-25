@@ -22,8 +22,8 @@ namespace AzcAnalyzerFixer.Services
 
         public async Task CompileTypeSpecAndGenerateSDKAsync()
         {
-            Console.WriteLine("Compiling TypeSpec and generating SDK...");
-            // Execute tsp compile command
+            Console.WriteLine("⏳ Compiling TypeSpec and generating SDK...\n" );
+
             using var process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -47,15 +47,15 @@ namespace AzcAnalyzerFixer.Services
 
             if (process.ExitCode != 0)
             {
-                throw new Exception($"TypeSpec compilation failed with exit code {process.ExitCode}");
+                throw new Exception($"❌ TypeSpec compilation failed with exit code {process.ExitCode}");
             }
 
-            Console.WriteLine("TypeSpec compilation completed successfully.");
+            Console.WriteLine("✅ TypeSpec compilation completed successfully.\n");
         }
 
         public async Task PrepareSDKFilesAsync()
         {
-            Console.WriteLine("Preparing SDK files...");
+            Console.WriteLine("⏳ Preparing SDK files...\n");
             var tspOutputPath = Path.Combine(workspacePath, sdkOutputPath);
             var generatedCsprojPath = FindGeneratedCsprojFile(tspOutputPath);
 
@@ -65,24 +65,24 @@ namespace AzcAnalyzerFixer.Services
             }
 
             var generatedProjectDir = Path.GetDirectoryName(generatedCsprojPath);
-            Console.WriteLine($"Found generated project at: {generatedProjectDir}");
+            // Console.WriteLine($"Found generated project at: {generatedProjectDir}");
 
             // Copy Nuget.config to the same directory as the generated .csproj
             var sourceNugetConfig = Path.Combine(helperPath, "Nuget.config");
             var targetNugetConfig = Path.Combine(generatedProjectDir, "Nuget.config");
             File.Copy(sourceNugetConfig, targetNugetConfig, overwrite: true);
-            Console.WriteLine($"Copied Nuget.config from {sourceNugetConfig} to {targetNugetConfig}");
+            // Console.WriteLine($"Copied Nuget.config from {sourceNugetConfig} to {targetNugetConfig}");
 
             //Copy .csproj contents from helper to generated project
             var sourceCsproj = Path.Combine(helperPath, "Azure.ResourceManager.csproj");
             var csprojContent = await File.ReadAllTextAsync(sourceCsproj);
             await File.WriteAllTextAsync(generatedCsprojPath, csprojContent);
-            Console.WriteLine($"Updated .csproj file at {generatedCsprojPath}");
+            // Console.WriteLine($"Updated .csproj file at {generatedCsprojPath}");
         }
 
         public async Task BuildSDKAsync()
         {
-            Console.WriteLine("Building SDK...");
+            Console.WriteLine("⏳Building SDK...\n");
 
             // Find the generated .csproj file in the output directory
             var tspOutputPath = Path.Combine(workspacePath, sdkOutputPath);
@@ -94,7 +94,7 @@ namespace AzcAnalyzerFixer.Services
             }
 
             var generatedProjectDir = Path.GetDirectoryName(generatedCsprojPath);
-            Console.WriteLine($"Building project at: {generatedProjectDir}");
+            // Console.WriteLine($"Building project at: {generatedProjectDir}");
 
             using var process = new Process
             {
@@ -130,19 +130,18 @@ namespace AzcAnalyzerFixer.Services
             await File.WriteAllTextAsync(azcErrorsPath, azcErrors);
             await File.WriteAllTextAsync(azcErrorsBackupPath, azcErrors);
 
-            Console.WriteLine($"AZC errors extracted and saved to {azcErrorsPath}");
+            Console.WriteLine($"The generator found following AZC errors:\n{azcErrors}\n");
 
             // Save full build log for reference
-             var buildLogPath = Path.Combine(logPath, "build-output.log");
+            var buildLogPath = Path.Combine(logPath, "build-output.log");
             await File.WriteAllTextAsync(buildLogPath, fullBuildOutput);
-            Console.WriteLine($"Full build output saved to {buildLogPath}");
 
             if (process.ExitCode != 0)
             {
                 throw new Exception($"SDK build failed with exit code {process.ExitCode}. Check {buildLogPath} for details.");
             }
 
-            Console.WriteLine($"SDK build completed. Build log saved to {buildLogPath}");
+            Console.WriteLine($"✅ SDK build completed.\n");
         }
 
         public async Task CreateTimestampedBackup(string prefix = "")
@@ -156,7 +155,7 @@ namespace AzcAnalyzerFixer.Services
             var backupPath = Path.Combine(backupDir, fileName);
         
             File.Copy(mainTspPath, backupPath, true);
-            Console.WriteLine($"Backup created at {backupPath}");
+            // Console.WriteLine($"Backup created at {backupPath}");
         }
         private string FindGeneratedCsprojFile(string searchPath)
         {
