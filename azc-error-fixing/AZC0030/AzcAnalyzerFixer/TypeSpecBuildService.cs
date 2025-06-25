@@ -181,13 +181,13 @@ namespace AzcAnalyzerFixer.Services
                 lines.Where(line => line.Contains("AZC", StringComparison.OrdinalIgnoreCase)));
         }
 
-        public bool HasAzcErrors()
+        public int GetAzcErrorCount()
         {
             var azcErrorsPath = Path.Combine(logPath, "azc-errors.txt");
-            if (!File.Exists(azcErrorsPath)) return false;
+            if (!File.Exists(azcErrorsPath)) return 0;
 
-            var errors = File.ReadAllText(azcErrorsPath);
-            return !string.IsNullOrWhiteSpace(errors);
+            var errors = File.ReadAllLines(azcErrorsPath);
+            return errors.Count(line => !string.IsNullOrWhiteSpace(line));
         }
     }
 }

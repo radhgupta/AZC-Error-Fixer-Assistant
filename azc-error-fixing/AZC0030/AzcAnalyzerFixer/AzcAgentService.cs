@@ -19,30 +19,62 @@ namespace AzcAnalyzerFixer.Services
         private readonly string model;
         private readonly string projectEndpoint;
 
-        private const string AzcQueryPrompt = @"You are an expert on Azure SDK naming conventions and the AZC0030 analyzer rule (model names ending in disallowed suffixes Request, Response, Options).
-                                                I will give you:
-                                                1) A TypeSpec file.
-                                                2) A list of AZC0030 errors, each referring to a model name that ends with one of the forbidden suffixes.
-         
-                                                You have access to one tool:
-                                                • file_search(path: string) → returns the *full contents* of that file.
+        private const string AzcQueryPrompt = @"You are an expert Azure SDK developer specializing in TypeSpec and Azure SDK Design Guidelines compliance.
 
-                                                When you need the files, emit exactly:
+MISSION: Fix ALL AZC analyzer violations in the provided TypeSpec file to ensure full compliance with Azure SDK standards.
 
-                                                CALL_TOOL: file_search(\'main.tsp.txt\')  
-                                                CALL_TOOL: file_search(\'azc-errors.txt\')
+CRITICAL REQUIREMENTS:
+1. When renaming models, update ALL references to those models throughout the file
+2. Ensure the generated TypeSpec file is syntactically valid
+3. Maintain consistent naming across all model references
+4. Verify that all referenced models are properly defined
 
-                                                Once you have both files, output *only* this JSON schema, with no extra characters, no markdown fences, no commentary:
+CONTEXT: You will analyze:
+1) A TypeSpec file (main.tsp.txt) - the source TypeSpec code
+2) AZC error log (azc-errors.txt) - containing ALL AZC violations
 
-                                                {
-                                                ""suggestions"": [
-                                                    { ""OriginalName"": string, ""SuggestedName"": string, ""Reason"": string }
-                                                ],
-                                                ""updatedTsp"": string
-                                                }
+COMMON AZC VIOLATIONS AND FIXES:
+• AZC0008: Missing ServiceVersion enum → Add ServiceVersion enum to client options
+• AZC0012: Generic single-word names → Use specific, prefixed names (e.g., 'Disk' → 'ComputeDisk')
+• AZC0030: Forbidden suffixes → Remove Request/Response/Options suffixes
+• AZC0015: Model property names → Use proper casing and naming conventions
+• AZC0020: Invalid return types → Use proper Azure SDK return patterns
 
-                                                Make sure the entire response is a single JSON object matching that schema and nothing else.
-                                                ";
+VALIDATION CHECKLIST:
+✓ All model names follow Azure SDK naming conventions
+✓ All model references are updated consistently throughout the file
+✓ No undefined model references exist
+✓ TypeSpec syntax is valid (proper decorators, proper service declaration)
+✓ All AZC violations are resolved
+
+OUTPUT REQUIREMENTS:
+Provide ONLY a JSON response with complete fixes for ALL identified AZC violations:
+
+{
+  ""analysis"": {
+    ""total_azc_errors"": number,
+    ""error_types_found"": [""AZC0008"", ""AZC0012"", etc.],
+    ""models_requiring_fixes"": [""list of model names""]
+  },
+  ""fixes"": {
+    ""model_renames"": [
+      { ""original"": ""Disk"", ""fixed"": ""ComputeDisk"", ""reason"": ""AZC0012: Added service prefix"" }
+    ],
+    ""reference_updates"": [
+      { ""location"": ""line 13"", ""original"": ""DiskOptions"", ""fixed"": ""ComputeDiskOptions"", ""reason"": ""Updated reference to match renamed model"" }
+    ],
+    ""structural_additions"": [
+      { ""type"": ""ServiceVersion"", ""location"": ""client options"", ""reason"": ""AZC0008: Required enum"" }
+    ]
+  },
+  ""UpdatedTsp"": ""complete updated TypeSpec content with all AZC fixes applied and all references updated consistently""
+}
+
+CRITICAL: 
+- Ensure the returned TypeSpec is syntactically valid so that when we compile it we don't get any errors, with all necessary decorators and a proper service declaration.
+- Update ALL references when renaming models
+- Verify that all referenced models exist in the updated file
+- Test that the updated TypeSpec would compile successfully";
 
         public AzcAgentService(string projectEndpoint, string model = "gpt-35-turbo")
         {
@@ -133,67 +165,95 @@ namespace AzcAnalyzerFixer.Services
                 }
             }
 
-            // Clean up the temporary file
-            try
-            {
-                if (File.Exists(mainTspTxtPath))
-                {
-                    File.Delete(mainTspTxtPath);
-                    // Console.WriteLine("Cleaned up temporary TSP text file");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Could not delete temporary file: {ex.Message}");
-            }
+            // // Clean up the temporary file
+            // try
+            // {
+            //     if (File.Exists(mainTspTxtPath))
+            //     {
+            //         File.Delete(mainTspTxtPath);
+            //         // Console.WriteLine("Cleaned up temporary TSP text file");
+            //     }
+            // }
+            // catch (Exception ex)
+            // {
+            //     Console.WriteLine($"Warning: Could not delete temporary file: {ex.Message}");
+            // }
 
             return uploadedFileIds;
         }
 
         private async Task<string> CreateVectorStoreAsync(List<string> uploadedFileIds, CancellationToken ct)
         {
-            try
+            const int maxRetries = 3;
+            const int indexingWaitTime = 10; // seconds
+            
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                // Console.WriteLine("Creating vector store from uploaded files...");
-                var vectorStore = await client.VectorStores.CreateVectorStoreAsync(
-                    uploadedFileIds,
-                    name: "azc-session",
-                    cancellationToken: ct).ConfigureAwait(false);
+                try
+                {
+                    // Console.WriteLine($"Creating vector store attempt {attempt}/{maxRetries}...");
+                    
+                    // Create vector store
+                    var vectorStore = await client.VectorStores.CreateVectorStoreAsync(
+                        uploadedFileIds,
+                        name: $"azc-session-{DateTime.Now:yyyyMMddHHmmss}",
+                        cancellationToken: ct).ConfigureAwait(false);
 
-                if (vectorStore?.Value?.Id != null)
-                {
-                    // Console.WriteLine($"Successfully created vector store. ID: {vectorStore.Value.Id}");
-                    return vectorStore.Value.Id;
+                    if (vectorStore?.Value?.Id == null)
+                    {
+                        throw new Exception("No vector store ID returned");
+                    }
+
+                    // Wait for indexing
+                    // Console.WriteLine($"Waiting {indexingWaitTime} seconds for indexing...");
+                    await Task.Delay(TimeSpan.FromSeconds(indexingWaitTime), ct);
+
+                    // Verify vector store is accessible
+                    var testStore = await client.VectorStores.GetVectorStoreAsync(
+                        vectorStore.Value.Id, 
+                        ct).ConfigureAwait(false);
+
+                    if (testStore?.Value != null)
+                    {
+                        // Console.WriteLine($"✅ Vector store created and verified. ID: {vectorStore.Value.Id}");
+                        return vectorStore.Value.Id;
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    throw new Exception("Failed to create vector store - no ID returned");
+                    // Console.WriteLine($"Attempt {attempt} failed: {ex.Message}");
+                    
+                    if (attempt < maxRetries)
+                    {
+                        var delay = attempt * 5; // Progressive delay
+                        Console.WriteLine($"Retrying in {delay} seconds...");
+                        await Task.Delay(TimeSpan.FromSeconds(delay), ct);
+                    }
+                    else throw;
                 }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error creating vector store: {ex.Message}");
-                throw;
-            }
+            
+            throw new Exception("Failed to create and verify vector store after retries");
         }
-
         private async Task<string> GetAgentSuggestionsAsync(string vectorStoreId, string mainTspPath, CancellationToken ct)
         {
             try
             {
                 // Console.WriteLine("Creating a thread for agent analysis...");
+                var fileHelper = new FileHelper(mainTspPath, 
+                Path.Combine(Path.GetDirectoryName(mainTspPath)!, "..", "log", "azc-errors.txt"));
 
                 // Set up the tools for the agent
-                var fileSearchTool = new FileSearchToolResource();
-                fileSearchTool.VectorStoreIds.Add(vectorStoreId); 
+                // var fileSearchTool = new FileSearchToolResource();
+                // fileSearchTool.VectorStoreIds.Add(vectorStoreId); 
                 // Create or update the agent with file search capability
                 // Console.WriteLine($"Creating agent with file search capability using model: {model}...");
                 agent = await client.Administration.CreateAgentAsync(
                     model: model,
                     name: "AZC0030 fixer Agent",
                     instructions: AzcQueryPrompt,
-                    tools: new[] { new FileSearchToolDefinition() },
-                    toolResources: new ToolResources { FileSearch = fileSearchTool },
+                    // tools: new[] { new FileSearchToolDefinition() },
+                    // toolResources: new ToolResources { FileSearch = fileSearchTool },
                     cancellationToken: ct
                 ).ConfigureAwait(false);
 
@@ -214,7 +274,25 @@ namespace AzcAnalyzerFixer.Services
                 var message = await client.Messages.CreateMessageAsync(
                     thread.Id,
                     MessageRole.User,
-                    "Please analyze the files for AZC0030 errors and suggest appropriate fixes following Azure SDK naming conventions.",
+                    $@"Please analyze the uploaded files for ALL AZC analyzer violations and provide comprehensive fixes:
+                    1. Examine the TypeSpec file content
+                    ===FILE_CONTENT_START===
+                    {fileHelper.MainTspContent}
+                    ===FILE_CONTENT_END===
+                    2. Review the AZC error log
+                    ===ERROR_LOG_START===
+                    {fileHelper.ErrorLogContent}
+                    ===ERROR_LOG_END===
+                    3. Fix ALL error types found (AZC0008, AZC0012, AZC0030, AZC0015, AZC0020, etc.)
+                    4. Follow Azure SDK Design Guidelines for naming conventions
+                    5. Provide the complete updated TypeSpec code with all violations resolved
+                    
+                    Return ONLY a JSON response as specified in your instructions with:
+                    - Do not include any text outside the JSON object
+                    - Make sure the JSON is well-formed so that it can be parsed programmatically to retrieve the updated TypeSpec content from UpdatedTsp field
+                    - Complete analysis of all error types found
+                    - All model renames and structural additions needed  
+                    - The full updated TypeSpec content that resolves every AZC violation",
                     cancellationToken: ct).ConfigureAwait(false);
 
                 if (message == null)
@@ -271,9 +349,9 @@ namespace AzcAnalyzerFixer.Services
                     {
                         if (content is MessageTextContent textContent)
                         {
-                            Console.WriteLine("---Response Start---");
-                            Console.WriteLine(textContent.Text);
-                            Console.WriteLine("---Response End---");
+                            // Console.WriteLine("---Response Start---");
+                            // Console.WriteLine(textContent.Text);
+                            // Console.WriteLine("---Response End---");
                             response.Add(textContent.Text);
                         }
                     }
@@ -293,43 +371,219 @@ namespace AzcAnalyzerFixer.Services
         {
             var tempPath = Path.ChangeExtension(tspPath, ".txt");
             File.Copy(tspPath, tempPath, true); // Overwrite if exists
-            // Console.WriteLine($"Created temporary copy of TSP file at: {tempPath}");
+            Console.WriteLine($"Created temporary copy of TSP file at: {tempPath}");
             return tempPath;
         }
 
-        private Task CreateUpdatedFileAsync(string suggestion, string mainTsp)
+
+        private async Task CreateUpdatedFileAsync(string suggestion, string mainTsp)
         {
-            var start = suggestion.IndexOf('{');
-            var end = suggestion.LastIndexOf('}');
-            if (start < 0 || end < 0 || end <= start)
-                throw new Exception("No JSON object found in agent response:\n" + suggestion);
-
-            var jsonPayload = suggestion.Substring(start, end - start + 1);
-            var result = JsonSerializer.Deserialize<AzcFixResult>(jsonPayload, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (result?.UpdatedTsp == null)
+            try
             {
-                Console.WriteLine("No suggestions found for AZC0030 errors.");
-                return Task.CompletedTask;
+                Console.WriteLine("Processing agent response...");
+                
+                // Extract JSON from response
+                var jsonPayload = ExtractJsonFromResponse(suggestion);
+                
+                // Parse with enhanced options
+                var options = new JsonSerializerOptions 
+                { 
+                    PropertyNameCaseInsensitive = true,
+                    AllowTrailingCommas = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip
+                };
+
+                var result = JsonSerializer.Deserialize<AzcFixResult>(jsonPayload, options);
+                
+                if (result?.UpdatedTsp == null)
+                {
+                    throw new Exception("No updated TypeSpec content found in response");
+                }
+
+                // Create backup
+                // var backupPath = mainTsp + $".backup.{DateTime.Now:yyyyMMdd_HHmmss}";
+                // File.Copy(mainTsp, backupPath, true);
+                // Console.WriteLine($"Created backup at: {backupPath}");
+
+                // Update file
+                await File.WriteAllTextAsync(mainTsp, result.UpdatedTsp);
+                Console.WriteLine($"Successfully updated {Path.GetFileName(mainTsp)}");
+
+                // Log changes
+                // if (result.Analysis != null)
+                // {
+                //     Console.WriteLine($"\nFixed {result.Analysis.TotalAzcErrors} AZC violations:");
+                //     foreach (var error in result.Analysis.ErrorTypesFound)
+                //     {
+                //         Console.WriteLine($"- {error}");
+                //     }
+                // }
             }
-
-            // 2) Overwrite main.tsp
-            File.WriteAllText(mainTsp, result.UpdatedTsp);
-            Console.WriteLine($"main.tsp has been updated in place.");
-
-            return Task.CompletedTask;
+            catch (JsonException ex)
+            {
+                Console.WriteLine("JSON parsing error. Raw response:");
+                Console.WriteLine(suggestion);
+                Console.WriteLine($"\nError details: {ex.Message}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating file: {ex.Message}");
+                throw;
+            }
         }
-        
+
+        private string ExtractJsonFromResponse(string response)
+        {
+            try
+            {
+                // Find the last occurrence of '{' that has a matching '}'
+                int start = -1;
+                int end = -1;
+                int depth = 0;
+                
+                // Find the last JSON object in the response
+                for (int i = response.Length - 1; i >= 0; i--)
+                {
+                    char c = response[i];
+                    if (c == '}')
+                    {
+                        depth++;
+                        if (end == -1) end = i;
+                    }
+                    else if (c == '{')
+                    {
+                        depth--;
+                        if (depth == 0)
+                        {
+                            start = i;
+                            break;
+                        }
+                    }
+                }
+
+                if (start == -1 || end == -1 || start >= end)
+                {
+                    Console.WriteLine("Raw response for debugging:");
+                    Console.WriteLine(response);
+                    throw new Exception("No valid JSON object found in response");
+                }
+
+                var jsonPayload = response.Substring(start, end - start + 1);
+                
+                // Verify the extracted JSON is valid
+                using (var document = JsonDocument.Parse(jsonPayload))
+                {
+                    // Additional validation for required properties
+                    var root = document.RootElement;
+                    if (!root.TryGetProperty("analysis", out _))
+                    {
+                        throw new Exception("Missing required 'analysis' property in JSON");
+                    }
+                    if (!root.TryGetProperty("UpdatedTsp", out _))
+                    {
+                        throw new Exception("Missing required 'UpdatedTsp' property in JSON");
+                    }
+
+                    // Console.WriteLine("✅ Successfully extracted and validated JSON response");
+                    return jsonPayload;
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"JSON parsing error: {ex.Message}");
+                Console.WriteLine("Failed to parse response. Content:");
+                Console.WriteLine(response);
+                throw new Exception($"Invalid JSON structure: {ex.Message}");
+            }
+        }
+
+
         private class AzcFixResult
         {
-            public List<AzcFixSuggestion>? Suggestions { get; set; }
+            [JsonPropertyName("analysis")]
+            public Analysis? Analysis { get; set; }
+            
+            [JsonPropertyName("fixes")]
+            public Fixes? Fixes { get; set; }
+            
+            [JsonPropertyName("UpdatedTsp")]
             public string? UpdatedTsp { get; set; }
         }
 
-        private class AzcFixSuggestion
+        private class Analysis
         {
-            public string? OriginalName   { get; set; }
-            public string? SuggestedName  { get; set; }
-            public string? Reason         { get; set; }
+            [JsonPropertyName("total_azc_errors")]
+            public int TotalAzcErrors { get; set; }
+            
+            [JsonPropertyName("error_types_found")]
+            public List<string> ErrorTypesFound { get; set; } = new();
+            
+            [JsonPropertyName("models_requiring_fixes")]
+            public List<string> ModelsRequiringFixes { get; set; } = new();
+        }
+
+        private class Fixes
+        {
+            [JsonPropertyName("model_renames")]
+            public List<ModelRename> ModelRenames { get; set; } = new();
+            
+            [JsonPropertyName("reference_updates")]
+            public List<ReferenceUpdate> ReferenceUpdates { get; set; } = new();
+            
+            [JsonPropertyName("structural_additions")]
+            public List<StructuralAddition> StructuralAdditions { get; set; } = new();
+        }
+
+        private class ModelRename
+        {
+            [JsonPropertyName("original")]
+            public string? Original { get; set; }
+            
+            [JsonPropertyName("fixed")]
+            public string? Fixed { get; set; }
+            
+            [JsonPropertyName("reason")]
+            public string? Reason { get; set; }
+        }
+
+        private class ReferenceUpdate
+        {
+            [JsonPropertyName("location")]
+            public string? Location { get; set; }
+            
+            [JsonPropertyName("original")]
+            public string? Original { get; set; }
+            
+            [JsonPropertyName("fixed")]
+            public string? Fixed { get; set; }
+            
+            [JsonPropertyName("reason")]
+            public string? Reason { get; set; }
+        }
+
+        private class StructuralAddition
+        {
+            [JsonPropertyName("type")]
+            public string? Type { get; set; }
+            
+            [JsonPropertyName("location")]
+            public string? Location { get; set; }
+            
+            [JsonPropertyName("reason")]
+            public string? Reason { get; set; }
+        }
+
+        public class FileHelper
+        {
+            public string MainTspContent { get; private set; }
+            public string ErrorLogContent { get; private set; }
+
+            public FileHelper(string mainTspPath, string logPath)
+            {
+                MainTspContent = File.ReadAllText(mainTspPath);
+                ErrorLogContent = File.Exists(logPath) ? File.ReadAllText(logPath) : string.Empty;
+            }
         }
 
     }
