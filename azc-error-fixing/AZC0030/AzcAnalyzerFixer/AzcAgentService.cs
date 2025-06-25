@@ -54,17 +54,17 @@ namespace AzcAnalyzerFixer.Services
             this.projectEndpoint = projectEndpoint;
             this.model = model;
             client = new PersistentAgentsClient(projectEndpoint, new DefaultAzureCredential());
-        }        public async Task fixAzcErrorsAsync(string mainTsp, string logPath)
+        }
+
+        public async Task fixAzcErrorsAsync(string mainTsp, string logPath)
         {
-            await TestConnectionAsync(CancellationToken.None).ConfigureAwait(false);
-            await DeleteAgents(CancellationToken.None).ConfigureAwait(false);
             var uploadedFiles = await TestFileUploadAsync(logPath, mainTsp, CancellationToken.None).ConfigureAwait(false);
             var vectorStoreId = await CreateVectorStoreAsync(uploadedFiles, CancellationToken.None).ConfigureAwait(false);
             string suggestion = await GetAgentSuggestionsAsync(vectorStoreId, mainTsp, CancellationToken.None).ConfigureAwait(false);
             await CreateUpdatedFileAsync(suggestion, mainTsp).ConfigureAwait(false);
         }
 
-        private async Task TestConnectionAsync(CancellationToken ct)
+        public async Task TestConnectionAsync(CancellationToken ct)
         {
             var thread = await client.Threads.CreateThreadAsync(cancellationToken: ct).ConfigureAwait(false);
             if (thread?.Value?.Id != null)
@@ -73,7 +73,7 @@ namespace AzcAnalyzerFixer.Services
             }
         }
 
-        private async Task DeleteAgents(CancellationToken ct = default)
+        public async Task DeleteAgents(CancellationToken ct = default)
         {
             // System.Console.WriteLine($"Deleting agents in project '{projectEndpoint}'"); 
             AsyncPageable<PersistentAgent> agents = client.Administration.GetAgentsAsync(cancellationToken: ct);
@@ -311,11 +311,6 @@ namespace AzcAnalyzerFixer.Services
                 Console.WriteLine("No suggestions found for AZC0030 errors.");
                 return Task.CompletedTask;
             }
-
-            // 1) Backup the original
-            var backupPath = mainTsp + ".bak";
-            File.Copy(mainTsp, backupPath, overwrite: true);
-            Console.WriteLine($"Backup of original created at {backupPath}");
 
             // 2) Overwrite main.tsp
             File.WriteAllText(mainTsp, result.UpdatedTsp);
