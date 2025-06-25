@@ -19,63 +19,61 @@ namespace AzcAnalyzerFixer.Services
         private readonly string model;
         private readonly string projectEndpoint;
 
-        private const string AzcQueryPrompt = @"You are an expert Azure SDK developer specializing in TypeSpec and Azure SDK Design Guidelines compliance.
+        private const string AzcQueryPrompt = @"You are an expert Azure SDK developer and TypeSpec author, responsible for ensuring complete compliance with Azure SDK Design Guidelines and AZC analyzer standards.
 
-MISSION: Fix ALL AZC analyzer violations in the provided TypeSpec file to ensure full compliance with Azure SDK standards.
+                                                ### OBJECTIVE:
+                                                Given a TypeSpec source file and an AZC error log, your task is to automatically resolve **all** AZC analyzer violations and return a fully corrected, syntactically valid TypeSpec file.
 
-CRITICAL REQUIREMENTS:
-1. When renaming models, update ALL references to those models throughout the file
-2. Ensure the generated TypeSpec file is syntactically valid
-3. Maintain consistent naming across all model references
-4. Verify that all referenced models are properly defined
+                                                ### REQUIREMENTS:
+                                                - Fix **ALL** AZC violations (e.g., AZC0008, AZC0012, AZC0030, AZC0015, AZC0020, etc.)
+                                                - Rename models using Azure SDK naming conventions (e.g., add service prefixes for generic names)
+                                                - Update **all references** to renamed models throughout the TypeSpec file
+                                                - Add any **missing structures**, such as `ServiceVersion` enums if AZC0008 is present
+                                                - Ensure **TypeSpec 1.0+ syntax** is used throughout
+                                                - Your output TypeSpec file must pass compilation in TypeSpec 1.0+ without syntax errors
+                                                - Validate that all referenced models are **defined** and all decorators are correct
+                                                - Output must compile with no syntax or analyzer errors
 
-CONTEXT: You will analyze:
-1) A TypeSpec file (main.tsp.txt) - the source TypeSpec code
-2) AZC error log (azc-errors.txt) - containing ALL AZC violations
+                                                ### SYNTAX REQUIREMENTS — TYPESPEC 1.0+ COMPLIANCE:
 
-COMMON AZC VIOLATIONS AND FIXES:
-• AZC0008: Missing ServiceVersion enum → Add ServiceVersion enum to client options
-• AZC0012: Generic single-word names → Use specific, prefixed names (e.g., 'Disk' → 'ComputeDisk')
-• AZC0030: Forbidden suffixes → Remove Request/Response/Options suffixes
-• AZC0015: Model property names → Use proper casing and naming conventions
-• AZC0020: Invalid return types → Use proper Azure SDK return patterns
+                                                Use ONLY valid TypeSpec 1.0+ syntax. Here are examples you must follow:
 
-VALIDATION CHECKLIST:
-✓ All model names follow Azure SDK naming conventions
-✓ All model references are updated consistently throughout the file
-✓ No undefined model references exist
-✓ TypeSpec syntax is valid (proper decorators, proper service declaration)
-✓ All AZC violations are resolved
+                                                - ✅ Valid service declaration:
+                                                ```
+                                                @service(#{ title: 'My Service' })
 
-OUTPUT REQUIREMENTS:
-Provide ONLY a JSON response with complete fixes for ALL identified AZC violations:
+                                                - ✅ Valid enum declaration with explicit values:
+                                                enum ServiceVersion {
+                                                    V1: 1,
+                                                    V2: 2
+                                                }```
+                                                - ✅ the enum definition should be outside of the model, as TypeSpec does not allow defining enums inside models.
 
-{
-  ""analysis"": {
-    ""total_azc_errors"": number,
-    ""error_types_found"": [""AZC0008"", ""AZC0012"", etc.],
-    ""models_requiring_fixes"": [""list of model names""]
-  },
-  ""fixes"": {
-    ""model_renames"": [
-      { ""original"": ""Disk"", ""fixed"": ""ComputeDisk"", ""reason"": ""AZC0012: Added service prefix"" }
-    ],
-    ""reference_updates"": [
-      { ""location"": ""line 13"", ""original"": ""DiskOptions"", ""fixed"": ""ComputeDiskOptions"", ""reason"": ""Updated reference to match renamed model"" }
-    ],
-    ""structural_additions"": [
-      { ""type"": ""ServiceVersion"", ""location"": ""client options"", ""reason"": ""AZC0008: Required enum"" }
-    ]
-  },
-  ""UpdatedTsp"": ""complete updated TypeSpec content with all AZC fixes applied and all references updated consistently""
-}
+                                                ### OUTPUT FORMAT:
+                                                Return ONLY a JSON object structured exactly as follows:
 
-CRITICAL: 
-- Ensure the returned TypeSpec uses the TypeSpec 1.0+ syntax with object literals format: @service(#{title: ""Sample API""})  and enum format: enum SampleEnum { value1 : 1, value2 : 2 }
-- Ensure the returned TypeSpec is syntactically valid so that when we compile it we don't get any errors, with all necessary decorators and a proper service declaration.
-- Update ALL references when renaming models
-- Verify that all referenced models exist in the updated file
-- Test that the updated TypeSpec would compile successfully";
+                                                ```json
+                                                {
+                                                ""analysis"": {
+                                                    ""total_azc_errors"": <number>,
+                                                    ""error_types_found"": [""AZC0008"", ""AZC0012"", ...],
+                                                    ""models_requiring_fixes"": [""ModelA"", ""ModelB"", ...]
+                                                },
+                                                ""fixes"": {
+                                                    ""model_renames"": [
+                                                    { ""original"": ""Disk"", ""fixed"": ""ComputeDisk"", ""reason"": ""AZC0012: Added service prefix"" }
+                                                    ],
+                                                    ""reference_updates"": [
+                                                    { ""location"": ""line 42"", ""original"": ""DiskOptions"", ""fixed"": ""ComputeDiskOptions"", ""reason"": ""Updated reference to renamed model"" }
+                                                    ],
+                                                    ""structural_additions"": [
+                                                    { ""type"": ""ServiceVersion"", ""location"": ""client options"", ""reason"": ""AZC0008: Required enum"" }
+                                                    ]
+                                                },
+                                                ""UpdatedTsp"": ""<full updated TypeSpec content here>""
+                                                }
+                                                ```";
+ 
 
         public AzcAgentService(string projectEndpoint, string model = "gpt-35-turbo")
         {
@@ -275,25 +273,34 @@ CRITICAL:
                 var message = await client.Messages.CreateMessageAsync(
                     thread.Id,
                     MessageRole.User,
-                    $@"Please analyze the uploaded files for ALL AZC analyzer violations and provide comprehensive fixes:
-                    1. Examine the TypeSpec file content
-                    ===FILE_CONTENT_START===
-                    {fileHelper.MainTspContent}
-                    ===FILE_CONTENT_END===
-                    2. Review the AZC error log
-                    ===ERROR_LOG_START===
-                    {fileHelper.ErrorLogContent}
-                    ===ERROR_LOG_END===
-                    3. Fix ALL error types found (AZC0008, AZC0012, AZC0030, AZC0015, AZC0020, etc.)
-                    4. Follow Azure SDK Design Guidelines for naming conventions
-                    5. Provide the complete updated TypeSpec code with all violations resolved
-                    
-                    Return ONLY a JSON response as specified in your instructions with:
-                    - Do not include any text outside the JSON object
-                    - Make sure the JSON is well-formed so that it can be parsed programmatically to retrieve the updated TypeSpec content from UpdatedTsp field
-                    - Complete analysis of all error types found
-                    - All model renames and structural additions needed  
-                    - The full updated TypeSpec content that resolves every AZC violation",
+                    $@"
+                        Please analyze and correct all AZC analyzer violations using the following inputs:
+
+                        ### TypeSpec File
+                        ===FILE_CONTENT_START===
+                        {fileHelper.MainTspContent}
+                        ===FILE_CONTENT_END===
+
+                        ### AZC Error Log
+                        ===ERROR_LOG_START===
+                        {fileHelper.ErrorLogContent}
+                        ===ERROR_LOG_END===
+
+                        ### TASKS:
+                        1. Parse the TypeSpec file and AZC error log
+                        2. Fix **all** AZC violations found (e.g., AZC0008, AZC0012, AZC0030, AZC0015, AZC0020)
+                        3. Ensure consistent model naming and valid references
+                        4. Use TypeSpec 1.0+ syntax only. Your output TypeSpec file must pass compilation in TypeSpec 1.0+ without syntax errors
+                        5. Include any missing definitions (e.g., ServiceVersion enum if needed)
+
+                        ### RETURN:
+                        - Return **only** a well-formed JSON object (no extra text)
+                        - Follow the schema provided in your instructions
+                        - Include:
+                        - Total AZC errors and types
+                        - All renames, updates, and additions performed
+                        - Full updated TypeSpec in the `UpdatedTsp` field
+                        - Ensure that the returned TypeSpec is fully compilable and has zero AZC violations",
                     cancellationToken: ct).ConfigureAwait(false);
 
                 if (message == null)
@@ -408,7 +415,7 @@ CRITICAL:
 
                 // Update file
                 await File.WriteAllTextAsync(mainTsp, result.UpdatedTsp);
-                Console.WriteLine($"✅ Successfully updated {Path.GetFileName(mainTsp)}");
+                Console.WriteLine($"✅ Successfully updated TypeSpec files");
 
                 // Log changes
                 // if (result.Analysis != null)
@@ -573,9 +580,9 @@ CRITICAL:
             
             [JsonPropertyName("reason")]
             public string? Reason { get; set; }
-        }
+        } 
 
-        public class FileHelper
+       public class FileHelper
         {
             public string MainTspContent { get; private set; }
             public string ErrorLogContent { get; private set; }
@@ -586,6 +593,5 @@ CRITICAL:
                 ErrorLogContent = File.Exists(logPath) ? File.ReadAllText(logPath) : string.Empty;
             }
         }
-
     }
 }
