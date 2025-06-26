@@ -22,37 +22,23 @@ namespace AzcAnalyzerFixer.Services
         private const string AzcQueryPrompt = @"You are an expert Azure SDK developer and TypeSpec author, responsible for ensuring complete compliance with Azure SDK Design Guidelines and AZC analyzer standards.
 
                                                 ### OBJECTIVE:
-                                                Given a TypeSpec source file and an AZC error log, your task is to automatically resolve **all** AZC analyzer violations and return a fully corrected, syntactically valid TypeSpec file.
+                                                Given a TypeSpec source files (main.tsp and client.tsp) and an AZC error log, your task is to automatically resolve **all** AZC analyzer violations by updating client.tsp file with proper customization and return a fully corrected, syntactically valid client.tsp file.
 
                                                 ### REQUIREMENTS:
                                                 - Fix **ALL** AZC violations (e.g., AZC0008, AZC0012, AZC0030, AZC0015, AZC0020, etc.)
-                                                - Rename models using Azure SDK naming conventions (e.g., add service prefixes for generic names)
-                                                - Update **all references** to renamed models throughout the TypeSpec file
-                                                - Add any **missing structures**, such as `ServiceVersion` enums if AZC0008 is present
+                                                - If there is an existing client.tsp file, ensure it is updated correctly
+                                                - Do not modify main.tsp file
                                                 - Ensure **TypeSpec 1.0+ syntax** is used throughout
+                                                - Use https://azure.github.io/typespec-azure/docs/libraries/typespec-client-generator-core/reference/decorators/#@Azure.ClientGenerator.Core.clientName for  proper customization for csharp
                                                 - Your output TypeSpec file must pass compilation in TypeSpec 1.0+ without syntax errors
-                                                - Validate that all referenced models are **defined** and all decorators are correct
-                                                - Output must compile with no syntax or analyzer errors
+                                                - Ensure all client.tsp references match main.tsp types 
 
-                                                ### SYNTAX REQUIREMENTS — TYPESPEC 1.0+ COMPLIANCE:
-
-                                                Use ONLY valid TypeSpec 1.0+ syntax. Here are examples you must follow:
-
-                                                - ✅ Valid service declaration:
-                                                ```
-                                                @service(#{ title: 'My Service' })
-
-                                                - ✅ Valid enum declaration with explicit values:
-                                                enum ServiceVersion {
-                                                    V1: 1,
-                                                    V2: 2
-                                                }```
-                                                - ✅ the enum definition should be outside of the model, as TypeSpec does not allow defining enums inside models.
-
+                                                ### example fixes:
+                                                - AZC0030: @@clientName(ExisitingModelName, ""NewModelName"", ""csharp"");
+                                                Here the first parameter is the existing model from main.tsp, the second parameter is the new name for the client library, and the third parameter is always ""csharp"".
+                                             
                                                 ### OUTPUT FORMAT:
                                                 Return ONLY a JSON object structured exactly as follows:
-
-                                                ```json
                                                 {
                                                 ""analysis"": {
                                                     ""total_azc_errors"": <number>,
@@ -70,10 +56,11 @@ namespace AzcAnalyzerFixer.Services
                                                     { ""type"": ""ServiceVersion"", ""location"": ""client options"", ""reason"": ""AZC0008: Required enum"" }
                                                     ]
                                                 },
-                                                ""UpdatedTsp"": ""<full updated TypeSpec content here>""
+                                                ""UpdatedClientTsp"": ""<complete client.tsp content here>""
                                                 }
-                                                ```";
-                                                
+";
+ 
+
         public AzcAgentService(string projectEndpoint, string model = "gpt-35-turbo")
         {
             if (string.IsNullOrEmpty(model))
@@ -279,6 +266,10 @@ namespace AzcAnalyzerFixer.Services
                         ===FILE_CONTENT_START===
                         {fileHelper.MainTspContent}
                         ===FILE_CONTENT_END===
+                        ### Client.TSP File
+                        ===CLIENT_TSP_START===
+                        {fileHelper.ClientTspContent}
+                        ===CLIENT_TSP_END===
 
                         ### AZC Error Log
                         ===ERROR_LOG_START===
@@ -298,7 +289,7 @@ namespace AzcAnalyzerFixer.Services
                         - Include:
                         - Total AZC errors and types
                         - All renames, updates, and additions performed
-                        - Full updated TypeSpec in the `UpdatedTsp` field
+                        - Full updated TypeSpec in the UpdatedClientTsp field
                         - Ensure that the returned TypeSpec is fully compilable and has zero AZC violations",
                     cancellationToken: ct).ConfigureAwait(false);
 
@@ -402,10 +393,15 @@ namespace AzcAnalyzerFixer.Services
 
                 var result = JsonSerializer.Deserialize<AzcFixResult>(jsonPayload, options);
                 
-                if (result?.UpdatedTsp == null)
+                if (result?.UpdatedClientTsp == null)
                 {
                     throw new Exception("No updated TypeSpec content found in response");
                 }
+
+                //create or update client.tsp file
+                var clientTspPath = Path.Combine(Path.GetDirectoryName(mainTsp)!, "client.tsp");
+                await File.WriteAllTextAsync(clientTspPath, result.UpdatedClientTsp);
+                Console.WriteLine($"✅ Successfully updated client.tsp");
 
                 // Create backup
                 // var backupPath = mainTsp + $".backup.{DateTime.Now:yyyyMMdd_HHmmss}";
@@ -413,7 +409,7 @@ namespace AzcAnalyzerFixer.Services
                 // Console.WriteLine($"Created backup at: {backupPath}");
 
                 // Update file
-                await File.WriteAllTextAsync(mainTsp, result.UpdatedTsp);
+                // await File.WriteAllTextAsync(mainTsp, result.UpdatedClientTsp);
                 Console.WriteLine($"✅ Successfully updated TypeSpec files");
 
                 // Log changes
@@ -487,9 +483,9 @@ namespace AzcAnalyzerFixer.Services
                     {
                         throw new Exception("Missing required 'analysis' property in JSON");
                     }
-                    if (!root.TryGetProperty("UpdatedTsp", out _))
+                    if (!root.TryGetProperty("UpdatedClientTsp", out _))
                     {
-                        throw new Exception("Missing required 'UpdatedTsp' property in JSON");
+                        throw new Exception("Missing required 'UpdatedClientTsp' property in JSON");
                     }
 
                     // Console.WriteLine("✅ Successfully extracted and validated JSON response");
@@ -514,8 +510,8 @@ namespace AzcAnalyzerFixer.Services
             [JsonPropertyName("fixes")]
             public Fixes? Fixes { get; set; }
             
-            [JsonPropertyName("UpdatedTsp")]
-            public string? UpdatedTsp { get; set; }
+            [JsonPropertyName("UpdatedClientTsp")]
+            public string? UpdatedClientTsp { get; set; }
         }
 
         private class Analysis
@@ -585,10 +581,13 @@ namespace AzcAnalyzerFixer.Services
         {
             public string MainTspContent { get; private set; }
             public string ErrorLogContent { get; private set; }
+            public string ClientTspContent { get; private set; }
 
             public FileHelper(string mainTspPath, string logPath)
             {
                 MainTspContent = File.ReadAllText(mainTspPath);
+                var clientTspPath = Path.Combine(Path.GetDirectoryName(mainTspPath)!, "client.tsp");
+                ClientTspContent = File.Exists(clientTspPath) ? File.ReadAllText(clientTspPath) : "";
                 ErrorLogContent = File.Exists(logPath) ? File.ReadAllText(logPath) : string.Empty;
             }
         }
