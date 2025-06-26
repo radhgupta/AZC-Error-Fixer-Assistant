@@ -73,8 +73,7 @@ namespace AzcAnalyzerFixer.Services
                                                 ""UpdatedTsp"": ""<full updated TypeSpec content here>""
                                                 }
                                                 ```";
- 
-
+                                                
         public AzcAgentService(string projectEndpoint, string model = "gpt-35-turbo")
         {
             if (string.IsNullOrEmpty(model))

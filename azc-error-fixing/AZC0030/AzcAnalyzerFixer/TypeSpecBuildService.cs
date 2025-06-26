@@ -29,7 +29,7 @@ namespace AzcAnalyzerFixer.Services
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/c npx tsp compile src/main.tsp --output-dir {sdkOutputPath}",
+                    Arguments = $"/c npx tsp compile ./src --output-dir {sdkOutputPath}",
                     WorkingDirectory = workspacePath,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
