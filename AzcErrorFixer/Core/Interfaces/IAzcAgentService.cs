@@ -7,6 +7,7 @@ namespace AzcAnalyzerFixer.Core.Interfaces
     {
         Task TestConnectionAsync(CancellationToken ct);
         Task DeleteAgentsAsync(CancellationToken ct);
+        Task CreateAgentAsync(CancellationToken ct);
         Task FixAzcErrorsAsync(string mainTspPath, string logPath);
     }
 }

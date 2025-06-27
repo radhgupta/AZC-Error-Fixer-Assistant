@@ -27,6 +27,7 @@ namespace AzcAnalyzerFixer
                 logger.LogInfo("🔧 Starting AZC Analyzer Fixer...\n");
                 await agentService.TestConnectionAsync(CancellationToken.None).ConfigureAwait(false);
                 await agentService.DeleteAgentsAsync(CancellationToken.None).ConfigureAwait(false);
+                await agentService.CreateAgentAsync(CancellationToken.None).ConfigureAwait(false);
                 logger.LogInfo("✅ Connection successful.");
 
                 int iteration = 0;

@@ -29,6 +29,8 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
         private readonly ILoggerService logger;
         private readonly FileHelper fileHelper;
         private readonly string model;
+        private PersistentAgent? agent;
+
         private const string AgentPrompt = @"You are an expert Azure SDK developer and TypeSpec author, responsible for ensuring complete compliance with Azure SDK Design Guidelines and AZC analyzer standards.
 
                                                 ### OBJECTIVE:
@@ -87,7 +89,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             this.fileHelper = fileHelper;
             this.logger = loggerService;
             this.model = model ?? throw new ArgumentNullException(nameof(model), "Model must be provided.");
-
+            agent = null;
         }
 
         public async Task TestConnectionAsync(CancellationToken ct)
@@ -140,10 +142,37 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             Console.WriteLine("✅ Cleanup complete.\n");
         }
 
+        public async Task CreateAgentAsync(CancellationToken ct)
+        {
+            if (agent != null)
+            {
+                logger.LogInfo($"Agent already exists: {agent.Name} ({agent.Id})");
+                return;
+            }
+
+            logger.LogInfo("Creating AZC Fixer agent...");
+            agent = await client.Administration.CreateAgentAsync(
+                model: model,
+                name: "AZC Fixer",
+                instructions: AgentPrompt,
+                tools: new[] { new FileSearchToolDefinition() },
+                cancellationToken: ct);
+
+            if (agent == null || string.IsNullOrEmpty(agent.Id))
+            {
+                throw new InvalidOperationException("Failed to create AZC Fixer agent");
+            }
+
+            logger.LogInfo($"✅ Agent created successfully: {agent.Name} ({agent.Id})");
+        }
         public async Task FixAzcErrorsAsync(string tspPath, string logPath)
         {
             try
             {
+
+                if (agent == null)
+                throw new InvalidOperationException("Agent not created. Call CreateAgentAsync() first.");
+                
                 logger.LogInfo("Starting file upload...");
                 var uploadedFiles = await UploadFilesAsync(tspPath, logPath);
                 logger.LogInfo($"Files uploaded successfully: {string.Join(", ", uploadedFiles)}");
@@ -153,7 +182,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 logger.LogInfo($"Vector store created with ID: {vectorStoreId}");
 
                 logger.LogInfo("Starting analysis...");
-                var rawResponse = await AnalyzeAndFixAsync(vectorStoreId, tspPath);
+                var rawResponse = await AnalyzeAndFixAsync(vectorStoreId);
                 logger.LogInfo($"Raw response received: {rawResponse?.Substring(0, Math.Min(100, rawResponse?.Length ?? 0))}...");
 
                 logger.LogInfo("Extracting JSON...");
@@ -246,33 +275,17 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             return store.Value.Id;
         }
 
-        private async Task<string> AnalyzeAndFixAsync(string vectorStoreId, string mainTspPath)
+        private async Task<string> AnalyzeAndFixAsync(string vectorStoreId)
         {
             if (string.IsNullOrEmpty(vectorStoreId))
             {
                 throw new ArgumentException("Vector store ID cannot be null or empty", nameof(vectorStoreId));
             }
-
-            logger.LogInfo("Creating agent...");
-            PersistentAgent agent = await client.Administration.CreateAgentAsync(
-                model: model,
-                name: "AZC Fixer",
-                instructions: AgentPrompt);
-            if (agent == null || string.IsNullOrEmpty(agent.Id))
-            {
-                throw new InvalidOperationException("Failed to create agent");
-            }
-
             logger.LogInfo("Creating thread...");
             PersistentAgentThread thread = await client.Threads.CreateThreadAsync();
             if (thread == null || string.IsNullOrEmpty(thread.Id))
             {
                 throw new InvalidOperationException("Failed to create thread");
-            }
-
-            if (fileHelper.MainTspContent == null)
-            {
-                throw new InvalidOperationException("Main TypeSpec content is null");
             }
 
             logger.LogInfo("Creating message...");
