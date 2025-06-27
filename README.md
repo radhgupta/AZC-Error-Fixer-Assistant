@@ -1,85 +1,111 @@
-# TypeSpec Standalone SDK Sample (AZC0030 Error Trigger)
+# TypeSpec SDK Sample with AZC Error Fixer
 
-This repository demonstrates how to use [TypeSpec](https://typespec.io/) to generate a standalone C# SDK from a TypeSpec definition, with the specific goal of triggering the AZC0030 error. The generated SDK is standalone, requiring some manual adjustments to the generated files, particularly `.csproj` and `Directory.Build.props`, to ensure it builds and runs independently.
-
-## Objective
-
-- **Trigger AZC0030 error**: This repo is intentionally structured to surface the AZC0030 error during build or analysis.
-- **Standalone SDK**: The generated C# SDK does not depend on the Azure SDK monorepo structure and is meant to be built and used independently.
-- **Manual adjustments**: Some changes are required in the generated files to support standalone operation.
+This repository serves two main purposes:
+1. Demonstrates how to generate a standalone C# SDK from TypeSpec definitions
+2. Provides an AI-powered tool (AzcErrorFixer) to automatically fix AZC analyzer violations
 
 ## Repository Structure
 
-- `src/` - TypeSpec source files (`main.tsp`)
-- `tsp-output/` - Generated C# SDK output
-- `.gitignore` - Standard ignores for Node, TypeSpec, and .NET
-- `Directory.Build.props` - Project-wide MSBuild properties and package references
-- `README.md` - This documentation
-> The `helper` folder has a sample `sample-tsp-output` for reference.
+```
+├── src/                           - TypeSpec source files
+│   ├── main.tsp                  - Main TypeSpec definitions
+│   └── client.tsp                - Client customizations
+├── AzcErrorFixer/               - Automated AZC error fixing tool
+├── helper/                      - Reference implementations
+└── Directory.Build.props        - Project-wide MSBuild properties
+```
 
-## Getting Started
 
-Follow these steps to reproduce the scenario and trigger the AZC0030 error:
+### AzcErrorFixer Tool
 
-### 1. Install Dependencies
+### Overview
+AzcErrorFixer is an AI-powered tool that automatically detects and fixes AZC analyzer violations in TypeSpec files. It uses Azure AI to analyze error logs and generate appropriate fixes in the client.tsp file.
 
+### Features
+- **Automated Error Detection**: Scans TypeSpec output for AZC violations
+- **AI-Powered Analysis**: Uses Azure AI to understand and fix violations
+- **Iterative Fixing**: Multiple passes to resolve all issues
+- **Smart Client.tsp Generation**: Creates or updates client.tsp with proper customizations
+- **Validation**: Ensures fixes comply with Azure SDK guidelines
+
+### Prerequisites
+- Azure AI resource with deployed model (e.g., GPT-4)
+- .NET 9.0 or later
+- Azure CLI with authenticated session
+- TypeSpec compiler and dependencies
+
+### Configuration
+Create `appsettings.json` in the AzcErrorFixer directory:
+```json
+{
+  "ProjectEndpoint": "https://your-azure-ai-endpoint",
+  "Model": "deployment-name",
+  "MaxIterations": 5,
+  "TypeSpecSrcPath": "../src",
+  "LogPath": "../tsp-output/@azure-tools/typespec-csharp/src/azc-errors.log"
+}
+```
+
+### Using AzcErrorFixer
+
+1. **Build the Tool**
 ```sh
-npm install
+cd AzcErrorFixer
+dotnet build
 ```
 
-### 2. Clone Azure SDK for .NET
-
-Clone the [azure/azure-sdk-for-net](https://github.com/Azure/azure-sdk-for-net) repository. This is required because the generated SDK references shared sources from this repo.
-
+2. **Run the Fixer**
 ```sh
-git clone https://github.com/Azure/azure-sdk-for-net.git
+dotnet run
 ```
 
-### 3. Compile TypeSpec
+3. **Monitor Progress**
+The tool will:
+- Create an AI agent session
+- Upload TypeSpec files and error logs
+- Generate fixes for detected violations
+- Update client.tsp with corrections
+- Validate the changes
 
-Run the TypeSpec compiler to generate the C# SDK from your TypeSpec definition:
+### Common Scenarios
 
-```sh
-npx tsp compile ./src/main.tsp
+1. **Fixing AZC0030 (Model Naming)**
+```typespec
+// Before
+model Disk {
+  // properties
+}
+
+// After (in client.tsp)
+@@clientName(Disk, "ComputeDisk", "csharp");
 ```
 
-This will emit generated C# code into the `tsp-output/@azure-tools/typespec-csharp/` directory.
+2. **Multiple Violations**
+The tool can handle multiple AZC errors in a single pass:
+- AZC0008: Missing service version
+- AZC0012: Incorrect model naming
+- AZC0015: Operation group naming
+- AZC0020: Parameter naming
 
-### 4. Update `Directory.Build.props`
+### Troubleshooting
 
-The generated SDK expects to find Azure Core shared sources. Update the `<AzureCoreSharedSources>` property in the root `Directory.Build.props` to point to your local clone of the Azure SDK for .NET:
+1. **Connection Issues**
+- Verify Azure AI endpoint is accessible
+- Check DefaultAzureCredential setup
+- Ensure proper RBAC permissions
 
-```xml
-<PropertyGroup>
-  <AzureCoreSharedSources>C:\path\to\azure-sdk-for-net\sdk\core\Azure.Core\src\Shared\</AzureCoreSharedSources>
-</PropertyGroup>
-```
+2. **Fix Validation Failures**
+- Review error logs for specific AZC violations
+- Check client.tsp syntax
+- Verify TypeSpec compiler version
 
-Replace `C:\path\to\azure-sdk-for-net\` with the actual path where you cloned the repo.
+3. **Performance Optimization**
+- Adjust MaxIterations in settings
+- Monitor vector store indexing
+- Check file upload sizes
 
-### 5. Replace Generated `.csproj` and Add `Nuget.config`
-
-- Replace the `.csproj` file in the generated folder (`tsp-output/@azure-tools/typespec-csharp/src/`) with the `.csproj` file present in the `helper` folder.
-- Move the  `Nuget.config` from helper folder to the same level as the generated `.csproj` (i.e., in `tsp-output/@azure-tools/typespec-csharp/src/`).
-
-### 6. Build the Generated SDK
-
-Navigate to the generated SDK directory and build the project:
-
-```sh
-cd tsp-output/@azure-tools/typespec-csharp/src
-dotnet build --no-incremental
-```
-
-## Notes on Standalone SDK Adjustments
-
-- **.csproj and Directory.Build.props**: The generated `.csproj` and `Directory.Build.props` files may require manual tweaks to ensure all dependencies are correctly referenced and the project builds as a standalone SDK. These changes are not required to be done by the Users who generate SDKs for Azure.
-- **NuGet Feeds**: The `Nuget.config` in the generated output is set up to use both `nuget.org` and the Azure SDK DevOps feed.
-- **Analyzer Integration**: The repo is set up to use Azure SDK analyzers, which will surface the AZC0030 error as intended.
-
-## Troubleshooting
-
-- **AZC0030 Error**: If the error does not appear, ensure that analyzers are enabled and the shared sources path is correct.
-- **Dependency Issues**: Double-check that all required NuGet packages are restored and the Azure SDK for .NET repo is up to date.
+## Contributing
+Contributions are welcome! Please read our contributing guidelines and submit pull requests for any improvements.
 
 ## License
+[MIT License](LICENSE)
