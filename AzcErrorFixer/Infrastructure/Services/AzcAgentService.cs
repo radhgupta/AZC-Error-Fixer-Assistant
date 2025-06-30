@@ -5,16 +5,11 @@ using Azure.AI.Agents.Persistent;
 using Azure.Identity;
 using System.Text.Json;
 using Azure;
-using Azure.AI.Agents.Persistent;
-using Azure.Identity;
-using Azure;
-using System;
 using System.Text;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using AzcAnalyzerFixer.Core.Interfaces;
 using AzcAnalyzerFixer.Core.Models;
@@ -32,10 +27,10 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
         private PersistentAgent? agent;
 
         private const string AgentPrompt = @"You are an expert Azure SDK developer and TypeSpec author, responsible for ensuring complete compliance with Azure SDK Design Guidelines and AZC analyzer standards.
-
+ 
                                                 ### OBJECTIVE:
                                                 Given a TypeSpec source files (main.tsp and client.tsp) and an AZC error log, your task is to automatically resolve **all** AZC analyzer violations by updating client.tsp file with proper customization and return a fully corrected, syntactically valid client.tsp file.
-
+ 
                                                 ### REQUIREMENTS:
                                                 - Fix **ALL** AZC violations (e.g., AZC0008, AZC0012, AZC0030, AZC0015, AZC0020, etc.)
                                                 - If there is an existing client.tsp file, ensure it is updated correctly
@@ -43,8 +38,8 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                                                 - Ensure **TypeSpec 1.0+ syntax** is used throughout
                                                 - Use https://azure.github.io/typespec-azure/docs/libraries/typespec-client-generator-core/reference/decorators/#@Azure.ClientGenerator.Core.clientName for  proper customization for csharp
                                                 - Your output TypeSpec file must pass compilation in TypeSpec 1.0+ without syntax errors
-                                                - Ensure all client.tsp references match main.tsp types 
-
+                                                - Ensure all client.tsp references match main.tsp types
+ 
                                                 ### example fixes:
                                                 - AZC0030: @@clientName(ExisitingModelName, ""NewModelName"", ""csharp"");
                                                 Here the first parameter is the existing model from main.tsp, the second parameter is the new name for the client library, and the third parameter is always ""csharp"".
@@ -165,156 +160,51 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
             logger.LogInfo($"✅ Agent created successfully: {agent.Name} ({agent.Id})");
         }
-        public async Task FixAzcErrorsAsync(string tspPath, string logPath)
+
+        private async Task UpdateAgentVectorStoreAsync(string vectorStoreId, CancellationToken ct)
         {
-            try
-            {
+            if (agent == null)
+                throw new InvalidOperationException("Agent must be created before updating its vector store.");
 
-                if (agent == null)
-                throw new InvalidOperationException("Agent not created. Call CreateAgentAsync() first.");
-                
-                logger.LogInfo("Starting file upload...");
-                var uploadedFiles = await UploadFilesAsync(tspPath, logPath);
-                logger.LogInfo($"Files uploaded successfully: {string.Join(", ", uploadedFiles)}");
-
-                logger.LogInfo("Creating vector store...");
-                var vectorStoreId = await CreateVectorStoreAsync(uploadedFiles);
-                logger.LogInfo($"Vector store created with ID: {vectorStoreId}");
-
-                logger.LogInfo("Starting analysis...");
-                var rawResponse = await AnalyzeAndFixAsync(vectorStoreId);
-                logger.LogInfo($"Raw response received: {rawResponse?.Substring(0, Math.Min(100, rawResponse?.Length ?? 0))}...");
-
-                logger.LogInfo("Extracting JSON...");
-                var json = JsonHelper.ExtractJsonPayload(rawResponse);
-                logger.LogInfo($"Extracted JSON: {json?.Substring(0, Math.Min(100, json?.Length ?? 0))}...");
-
-                var result = JsonSerializer.Deserialize<AzcFixResult>(json);
-                if (result == null)
+            // Replace the FileSearchToolResource with a new one containing only the latest store
+            var updated = await client.Administration.UpdateAgentAsync(
+                agent.Id,
+                toolResources: new ToolResources
                 {
-                    throw new InvalidOperationException("Failed to deserialize the response JSON");
-                }
-
-                if (string.IsNullOrWhiteSpace(result.UpdatedClientTsp))
-                {
-                    throw new InvalidOperationException("No updated TypeSpec content was provided in the response");
-                }
-
-                fileHelper.WriteClientTsp(tspPath, result.UpdatedClientTsp);
-                logger.LogInfo("✅ Successfully updated client.tsp");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to fix AZC errors. Exception: {ex.Message}", ex);
-                logger.LogError($"Stack trace: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    logger.LogError($"Inner exception: {ex.InnerException.Message}");
-                    logger.LogError($"Inner exception stack trace: {ex.InnerException.StackTrace}");
-                }
-                throw;
-            }
-        }
-
-        private async Task<List<string>> UploadFilesAsync(string tspFolderPath, string logFilePath)
-        {
-            var uploadedFileIds = new List<string>();
-            var tempTspFiles = new List<string>();
-
-            // 1. Handle .tsp → .txt conversion
-            if (Directory.Exists(tspFolderPath))
-            {
-                var tspFiles = Directory.GetFiles(tspFolderPath, "*.tsp", SearchOption.TopDirectoryOnly);
-
-                foreach (var tspFile in tspFiles)
-                {
-                    var txtTempFile = Path.ChangeExtension(Path.GetTempFileName(), ".txt");
-                    File.Copy(tspFile, txtTempFile, true);
-                    tempTspFiles.Add(txtTempFile);
-                }
-            }
-            else
-            {
-                throw new DirectoryNotFoundException($"TSP folder not found: {tspFolderPath}");
-            }
-
-            // 2. Add log file to upload list
-            if (!File.Exists(logFilePath))
-            {
-                throw new FileNotFoundException($"Log file not found: {logFilePath}");
-            }
-
-            var filesToUpload = tempTspFiles.Append(logFilePath);
-
-            // 3. Upload all files
-            foreach (var file in filesToUpload)
-            {
-                try
-                {
-                    var result = await client.Files.UploadFileAsync(file, PersistentAgentFilePurpose.Agents);
-                    if (result?.Value?.Id != null)
+                    FileSearch = new FileSearchToolResource
                     {
-                        uploadedFileIds.Add(result.Value.Id);
-                        logger.LogInfo($"📤 Uploaded file: {Path.GetFileName(file)}");
+                        VectorStoreIds = { vectorStoreId }
                     }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError($"Failed to upload file: {file}", ex);
-                    throw;
-                }
-            }
+                },
+                cancellationToken: ct
+            );
 
-            return uploadedFileIds;
+            logger.LogInfo($"🔄 Agent vector store updated to: {vectorStoreId}");
         }
 
-        private async Task<string> CreateVectorStoreAsync(List<string> fileIds)
+        public async Task FixAzcErrorsAsync(string tspFolderPath, string logFilePath)
         {
-            var store = await client.VectorStores.CreateVectorStoreAsync(fileIds, name: $"azc-{DateTime.Now:yyyyMMddHHmmss}");
-            await Task.Delay(10000); // 10s indexing wait
-            return store.Value.Id;
-        }
+            if (agent == null)
+                throw new InvalidOperationException("Agent must be created before calling FixAzcErrorsAsync.");
 
-        private async Task<string> AnalyzeAndFixAsync(string vectorStoreId)
-        {
-            if (string.IsNullOrEmpty(vectorStoreId))
-            {
-                throw new ArgumentException("Vector store ID cannot be null or empty", nameof(vectorStoreId));
-            }
-            logger.LogInfo("Creating thread...");
+            var uploadedFiles = await UploadTspAndLogAsync(tspFolderPath, logFilePath);
+            if (uploadedFiles.Count == 0)
+                throw new InvalidOperationException("No files were uploaded. Cannot proceed with AZC error fixing.");
+            logger.LogInfo($"Uploaded {uploadedFiles} files to the agent vector store.");
+            await WaitForIndexingAsync(uploadedFiles);
+            var vectorStoreId = await CreateVectorStoreAsync(uploadedFiles);
+            await UpdateAgentVectorStoreAsync(vectorStoreId, CancellationToken.None);
+
             PersistentAgentThread thread = await client.Threads.CreateThreadAsync();
-            if (thread == null || string.IsNullOrEmpty(thread.Id))
-            {
-                throw new InvalidOperationException("Failed to create thread");
-            }
-
-            logger.LogInfo("Creating message...");
-            var msg = await client.Messages.CreateMessageAsync(
-                thread.Id,
-                MessageRole.User,
-                $@"
-                        Please analyze and correct all AZC analyzer violations using the following inputs:
-
-                        ### TypeSpec File
-                        ===FILE_CONTENT_START===
-                        {fileHelper.MainTspContent}
-                        ===FILE_CONTENT_END===
-                        ### Client.TSP File
-                        ===CLIENT_TSP_START===
-                        {fileHelper.ClientTspContent}
-                        ===CLIENT_TSP_END===
-
-                        ### AZC Error Log
-                        ===ERROR_LOG_START===
-                        {fileHelper.ErrorLogContent}
-                        ===ERROR_LOG_END===
-
+            string agentMessage = $@"
+                        Please analyze and correct all AZC analyzer violations using the following inputs. All the files are uploaded to the vector store. Use FileSearchTool to retrieve them.
+ 
                         ### TASKS:
                         1. Parse the TypeSpec file and AZC error log
                         2. Fix **all** AZC violations found (e.g., AZC0008, AZC0012, AZC0030, AZC0015, AZC0020)
                         3. Ensure consistent model naming and valid references
                         4. Use TypeSpec 1.0+ syntax only. Your output TypeSpec file must pass compilation in TypeSpec 1.0+ without syntax errors
-
+ 
                         ### RETURN:
                         - Return **only** a well-formed JSON object (no extra text)
                         - Follow the schema provided in your instructions
@@ -322,53 +212,117 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                         - Total AZC errors and types
                         - All renames, updates, and additions performed
                         - Full updated TypeSpec in the UpdatedClientTsp field
-                        - Ensure that the returned TypeSpec is fully compilable and has zero AZC violations",
-                cancellationToken: default);
+                        - Ensure that the returned TypeSpec is fully compilable and has zero AZC violations";
+            await client.Messages.CreateMessageAsync(thread.Id, MessageRole.User, agentMessage);
 
-            logger.LogInfo("Creating run...");
             ThreadRun run = await client.Runs.CreateRunAsync(thread.Id, agent.Id);
-            if (run == null || string.IsNullOrEmpty(run.Id))
-            {
-                throw new InvalidOperationException("Failed to create run");
-            }
-
             RunStatus status;
+
             do
             {
                 await Task.Delay(5000);
                 run = await client.Runs.GetRunAsync(thread.Id, run.Id);
-                if (run == null)
-                {
-                    throw new InvalidOperationException("Run became null during status check");
-                }
                 status = run.Status;
-                logger.LogInfo($"Current run status: {status}");
-            } while (status == RunStatus.InProgress || status == RunStatus.Queued);
+                logger.LogInfo($"Run status: {status}");
+            }
+            while (status == RunStatus.Queued || status == RunStatus.InProgress);
 
-            logger.LogInfo("Retrieving messages...");
-            AsyncPageable<PersistentThreadMessage> messages = client.Messages.GetMessagesAsync(thread.Id, order: ListSortOrder.Ascending);
-            var response = new List<string>();
+            var response = await ReadResponseAsync(thread.Id);
+            var json = JsonHelper.ExtractJsonPayload(response);
+            var result = JsonSerializer.Deserialize<AzcFixResult>(json);
 
-            await foreach (var msgItem in messages)
+            if (string.IsNullOrWhiteSpace(result?.UpdatedClientTsp))
+                throw new Exception("No updated client.tsp provided by agent.");
+
+            fileHelper.WriteClientTsp(tspFolderPath, result.UpdatedClientTsp);
+            logger.LogInfo("✅ client.tsp updated.");
+        }
+
+        private async Task<List<string>> UploadTspAndLogAsync(string folderPath, string logPath)
+        {
+            var uploadedIds = new List<string>();
+
+            var tspFiles = Directory.GetFiles(folderPath, "*.tsp");
+            foreach (var file in tspFiles)
             {
-                if (msgItem?.ContentItems == null) continue;
-                
-                foreach (var content in msgItem.ContentItems)
+                var txtTempPath = Path.Combine(Path.GetTempPath(), $"{Path.GetFileNameWithoutExtension(file)}.txt");
+                var content = await File.ReadAllTextAsync(file);
+                await File.WriteAllTextAsync(txtTempPath, content, Encoding.UTF8);
+                var finalContent = await File.ReadAllTextAsync(txtTempPath);
+
+                var uploaded = await client.Files.UploadFileAsync(txtTempPath, PersistentAgentFilePurpose.Agents);
+                logger.LogInfo($"Uploaded {file}");
+                if (uploaded?.Value?.Id != null)
+                    uploadedIds.Add(uploaded.Value.Id);
+            }
+
+            if (File.Exists(logPath))
+            {
+
+                var logTempPath = Path.Combine(Path.GetTempPath(), $"azc-errors.txt");
+                var logContent = await File.ReadAllTextAsync(logPath);
+                await File.WriteAllTextAsync(logTempPath, logContent, Encoding.UTF8);
+                var logUploaded = await client.Files.UploadFileAsync(logTempPath, PersistentAgentFilePurpose.Agents);
+                if (logUploaded?.Value?.Id != null)
+                    uploadedIds.Add(logUploaded.Value.Id);
+                logger.LogInfo($"Uploaded log file {logPath}");
+            }
+
+            return uploadedIds;
+        }
+
+        private async Task WaitForIndexingAsync(List<string> fileIds)
+        {
+            logger.LogInfo("⏳ Waiting for file indexing to complete...");
+
+            var maxWaitTime = TimeSpan.FromSeconds(60);
+            var pollingInterval = TimeSpan.FromSeconds(5);
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            while (stopwatch.Elapsed < maxWaitTime)
+            {
+                bool allIndexed = true;
+                foreach (var fileId in fileIds)
                 {
-                    if (content is MessageTextContent textContent)
-                    {
-                        response.Add(textContent.Text);
-                    }
+                    PersistentAgentFileInfo file = await client.Files.GetFileAsync(fileId);
+                    logger.LogInfo($"📄 File {file.Filename} index status: {file.Status}");
+                }
+
+                if (allIndexed)
+                {
+                    logger.LogInfo("✅ All files indexed successfully.");
+                    return;
+                }
+
+                await Task.Delay(pollingInterval);
+            }
+
+            throw new TimeoutException("❌ Timeout while waiting for file indexing to complete.");
+        }
+
+        private async Task<string> CreateVectorStoreAsync(List<string> fileIds)
+        {
+            var store = await client.VectorStores.CreateVectorStoreAsync(fileIds, name: $"azc-{DateTime.Now:yyyyMMddHHmmss}");
+            logger.LogInfo($"Created vector store: {store.Value.Name} ({store.Value.Id})");
+            await Task.Delay(10000);
+            return store.Value.Id;
+        }
+
+        private async Task<string> ReadResponseAsync(string threadId)
+        {
+            var messages = client.Messages.GetMessagesAsync(threadId, order: ListSortOrder.Ascending);
+            var allText = new List<string>();
+
+            await foreach (var message in messages)
+            {
+                foreach (var content in message.ContentItems.OfType<MessageTextContent>())
+                {
+                    logger.LogInfo($"Message content: {content.Text}");
+                    allText.Add(content.Text);
                 }
             }
 
-            var result = string.Join("\n", response);
-            if (string.IsNullOrWhiteSpace(result))
-            {
-                throw new InvalidOperationException("No response content was retrieved from the messages");
-            }
-
-            return result;
+            return string.Join("\n", allText);
         }
     }
 }
