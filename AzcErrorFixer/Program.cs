@@ -5,6 +5,7 @@ using AzcAnalyzerFixer.Core.Interfaces;
 using AzcAnalyzerFixer.Infrastructure.Services;
 using AzcAnalyzerFixer.Configuration;
 using AzcAnalyzerFixer.Logging;
+using AzcAnalyzerFixer.Composition;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AzcAnalyzerFixer
@@ -16,11 +17,13 @@ namespace AzcAnalyzerFixer
             int maxIterations = AppSettings.maxIterations;
             string projectEndpoint = AppSettings.ProjectEndpoint;
             string model = AppSettings.Model;
-            var serviceProvider = Startup.Configure();
+            var serviceProvider = AzcErrorFixerStartup.Configure();
 
             var logger = serviceProvider.GetRequiredService<ILoggerService>();
             var agentService = serviceProvider.GetRequiredService<IAzcAgentService>();
             var buildService = serviceProvider.GetRequiredService<ITypeSpecBuildService>();
+            var fixerTools = serviceProvider.GetServices<IErrorFixerTool>();
+            var promptBuilder = serviceProvider.GetRequiredService<IPromptBuilder>();
 
             try
             {

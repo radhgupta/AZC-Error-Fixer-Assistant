@@ -5,6 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using AzcAnalyzerFixer.Core.Interfaces;
 using AzcAnalyzerFixer.Logging;
+using AzcAnalyzerFixer.Core.Models;
+using System.Text.RegularExpressions;
 
 namespace AzcAnalyzerFixer.Infrastructure.Services
 {
@@ -133,6 +135,25 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             logger.LogInfo("✅ SDK build completed.\n");
         }
 
+        public List<AzcError> GetAzcErrorsDetails()
+        {
+            var path = Path.Combine(logPath, "azc-errors.txt");
+            if (!File.Exists(path)) return new List<AzcError>();
+
+            var rx = new Regex(@"(?<code>AZC\d{4}):\s*(?<msg>.*)", RegexOptions.Compiled);
+            var list = new List<AzcError>();
+            foreach (var line in File.ReadAllLines(path))
+            {
+                var m = rx.Match(line);
+                if (m.Success)
+                    list.Add(new AzcError {
+                        Code    = m.Groups["code"].Value,
+                        Message = m.Groups["msg"].Value
+                    });
+            }
+            return list; 
+        }
+
         public async Task CreateBackupAsync(string prefix = "")
         {
             string srcFolder = Path.Combine(workspacePath, "src");
@@ -170,9 +191,14 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
         private string ExtractAzcErrors(string buildLog)
         {
-            var lines = buildLog.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-            return string.Join(Environment.NewLine,
-                lines.Where(line => line.Contains("AZC", StringComparison.OrdinalIgnoreCase)));
+            var lines = buildLog
+                .Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries)
+                // only pick AZC lines
+                .Where(line => line.Contains("AZC", StringComparison.OrdinalIgnoreCase))
+                // remove exact duplicates
+                .Distinct();
+
+            return string.Join(Environment.NewLine, lines);
         }
     }
 }

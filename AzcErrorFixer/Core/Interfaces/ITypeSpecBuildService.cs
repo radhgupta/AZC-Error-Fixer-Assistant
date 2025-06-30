@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using AzcAnalyzerFixer.Core.Models;
 
 namespace AzcAnalyzerFixer.Core.Interfaces
 {
@@ -8,6 +9,7 @@ namespace AzcAnalyzerFixer.Core.Interfaces
         Task PrepareSdkFilesAsync();
         Task BuildSdkAsync();
         Task CreateBackupAsync(string prefix = "");
+        List<AzcError> GetAzcErrorsDetails();
         int GetAzcErrorCount();
     }
 }
