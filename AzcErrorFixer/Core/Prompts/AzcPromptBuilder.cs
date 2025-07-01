@@ -29,9 +29,8 @@ namespace AzcAnalyzerFixer.Core.Prompting
             sb.AppendLine(@"
 Return **only** this JSON:
 {
-  ""UpdatedClientTsp"": ""```ts
-<full fixed client.tsp here>
-```""
+  ""UpdatedClientTsp"": ""<complete client.tsp content here>""
+
 }");
             return sb.ToString();
         }
@@ -48,9 +47,7 @@ Return **only** this JSON:
             sb.AppendLine(@"
 Return **only** this JSON:
 {
-  ""UpdatedClientTsp"": ""```ts
-<syntax‐corrected client.tsp here>
-```""
+ ""UpdatedClientTsp"": ""<complete client.tsp content here>""
 }");
             return sb.ToString();
         }

@@ -47,9 +47,9 @@ namespace AzcAnalyzerFixer.Infrastructure.Helpers
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("analysis", out _) || !root.TryGetProperty("UpdatedClientTsp", out _))
+            if (!root.TryGetProperty("UpdatedClientTsp", out _))
             {
-                throw new Exception("Missing required JSON properties: 'analysis' or 'UpdatedClientTsp'");
+                throw new Exception("Missing required JSON properties: 'UpdatedClientTsp'");
             }
 
             return json;

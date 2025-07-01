@@ -26,60 +26,10 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
         private readonly string model;
         private PersistentAgent? agent;
 
-        private const string AgentPrompt = @"You are an expert Azure SDK developer and TypeSpec author, responsible for ensuring complete compliance with Azure SDK Design Guidelines and AZC analyzer standards.
- 
-                                                ### OBJECTIVE:
-                                                Given a TypeSpec source files (main.tsp and client.tsp) and an AZC error log, your task is to automatically resolve **all** AZC analyzer violations by updating client.tsp file with proper customization and return a fully corrected, syntactically valid client.tsp file.
- 
-                                                ### REQUIREMENTS:
-                                                - Fix **ALL** AZC violations (e.g., AZC0008, AZC0012, AZC0030, AZC0015, AZC0020, etc.)
-                                                - If there is an existing client.tsp file, ensure it is updated correctly
-                                                - Do not modify main.tsp file
-                                                - Ensure **TypeSpec 1.0+ syntax** is used throughout
-                                                - Use https://azure.github.io/typespec-azure/docs/libraries/typespec-client-generator-core/reference/decorators/#@Azure.ClientGenerator.Core.clientName for  proper customization for csharp
-                                                - Your output TypeSpec file must pass compilation in TypeSpec 1.0+ without syntax errors
-                                                - Ensure all client.tsp references match main.tsp types
- 
-                                                ### example fixes:
-                                                - AZC0030: @@clientName(ExisitingModelName, ""NewModelName"", ""csharp"");
-                                                Here the first parameter is the existing model from main.tsp, the second parameter is the new name for the client library, and the third parameter is always ""csharp"".
-                                             
-                                                ### OUTPUT FORMAT:
-                                                Return ONLY a JSON object structured exactly as follows:
-                                                {
-                                                ""analysis"": {
-                                                    ""total_azc_errors"": <number>,
-                                                    ""error_types_found"": [""AZC0008"", ""AZC0012"", ...],
-                                                    ""models_requiring_fixes"": [""ModelA"", ""ModelB"", ...]
-                                                },
-                                                ""fixes"": {
-                                                    ""model_renames"": [
-                                                    { ""original"": ""Disk"", ""fixed"": ""ComputeDisk"", ""reason"": ""AZC0012: Added service prefix"" }
-                                                    ],
-                                                    ""reference_updates"": [
-                                                    { ""location"": ""line 42"", ""original"": ""DiskOptions"", ""fixed"": ""ComputeDiskOptions"", ""reason"": ""Updated reference to renamed model"" }
-                                                    ],
-                                                },
-                                                ""UpdatedClientTsp"": ""<complete client.tsp content here>""
-                                                }";
+        private const string AgentPrompt = Configuration.AppSettings.initialPrompt;
 
         public AzcAgentService(string projectEndpoint, string model, ILoggerService loggerService, FileHelper fileHelper)
         {
-            if (string.IsNullOrWhiteSpace(projectEndpoint))
-            {
-                throw new ArgumentException("Project endpoint must be provided.", nameof(projectEndpoint));
-            }
-
-            if (loggerService == null)
-            {
-                throw new ArgumentNullException(nameof(loggerService));
-            }
-
-            if (fileHelper == null)
-            {
-                throw new ArgumentNullException(nameof(fileHelper));
-            }
-
             client = new PersistentAgentsClient(projectEndpoint, new DefaultAzureCredential());
             this.fileHelper = fileHelper;
             this.logger = loggerService;
@@ -182,11 +132,8 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             logger.LogInfo($"🔄 Agent vector store updated to: {vectorStoreId}");
         }
 
-        public async Task FixAzcErrorsAsync(string tspFolderPath, string logFilePath)
+        public async Task FixAzcErrorsAsync(string tspFolderPath, string logFilePath, string suggestions)
         {
-            if (agent == null)
-                throw new InvalidOperationException("Agent must be created before calling FixAzcErrorsAsync.");
-
             var uploadedFiles = await UploadTspAndLogAsync(tspFolderPath, logFilePath);
             if (uploadedFiles.Count == 0)
                 throw new InvalidOperationException("No files were uploaded. Cannot proceed with AZC error fixing.");
@@ -196,23 +143,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             await UpdateAgentVectorStoreAsync(vectorStoreId, CancellationToken.None);
 
             PersistentAgentThread thread = await client.Threads.CreateThreadAsync();
-            string agentMessage = $@"
-                        Please analyze and correct all AZC analyzer violations using the following inputs. All the files are uploaded to the vector store. Use FileSearchTool to retrieve them.
- 
-                        ### TASKS:
-                        1. Parse the TypeSpec file and AZC error log
-                        2. Fix **all** AZC violations found (e.g., AZC0008, AZC0012, AZC0030, AZC0015, AZC0020)
-                        3. Ensure consistent model naming and valid references
-                        4. Use TypeSpec 1.0+ syntax only. Your output TypeSpec file must pass compilation in TypeSpec 1.0+ without syntax errors
- 
-                        ### RETURN:
-                        - Return **only** a well-formed JSON object (no extra text)
-                        - Follow the schema provided in your instructions
-                        - Include:
-                        - Total AZC errors and types
-                        - All renames, updates, and additions performed
-                        - Full updated TypeSpec in the UpdatedClientTsp field
-                        - Ensure that the returned TypeSpec is fully compilable and has zero AZC violations";
+            string agentMessage = $@"Please apply the following AZC suggestions to the client.tsp file. Apply the changes one by one and return the updated file in a JSON object, Here are the suggestions: {suggestions}";
             await client.Messages.CreateMessageAsync(thread.Id, MessageRole.User, agentMessage);
 
             ThreadRun run = await client.Runs.CreateRunAsync(thread.Id, agent.Id);

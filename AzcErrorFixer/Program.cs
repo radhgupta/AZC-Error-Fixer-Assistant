@@ -43,6 +43,8 @@ namespace AzcAnalyzerFixer
                         await buildService.CompileTypeSpecAsync().ConfigureAwait(false);
                         await buildService.PrepareSdkFilesAsync().ConfigureAwait(false);
                         await buildService.BuildSdkAsync().ConfigureAwait(false);
+                        var azcErrors = buildService.GetAzcErrorsDetails();
+                        string suggestions = promptBuilder.BuildAzcFixPrompt(azcErrors, fixerTools);
 
                         errorsFixed = buildService.GetAzcErrorCount() == 0;
                         if (errorsFixed)
@@ -52,7 +54,7 @@ namespace AzcAnalyzerFixer
                         }
 
                         await buildService.CreateBackupAsync().ConfigureAwait(false);
-                        await agentService.FixAzcErrorsAsync(Configuration.AppSettings.TypeSpecSrcPath,Configuration.AppSettings.LogPath);
+                        await agentService.FixAzcErrorsAsync(Configuration.AppSettings.TypeSpecSrcPath,Configuration.AppSettings.LogPath, suggestions);
                     }
                     catch (Exception ex)
                     {
