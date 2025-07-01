@@ -14,7 +14,6 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
     {
         private readonly string workspacePath;
         private readonly string helperPath;
-        private readonly string logPath;
         private readonly string sdkOutputPath = "final-output";
         private readonly ILoggerService logger;
 
@@ -22,11 +21,10 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
         {
             this.workspacePath = workspacePath;
             this.helperPath = Path.Combine(workspacePath, "helper");
-            this.logPath = Path.Combine(workspacePath, "log");
             this.logger = logger;
         }
 
-        public async Task CompileTypeSpecAsync()
+        public async Task<string> CompileTypeSpecAsync()
         {
             logger.LogInfo("⏳ Compiling TypeSpec and generating SDK...\n");
 
@@ -48,13 +46,15 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             var output = await process.StandardOutput.ReadToEndAsync();
             var error = await process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
+            var compileLog = $"{output}\n{error}";
 
             if (process.ExitCode != 0)
             {
-                throw new Exception($"❌ TypeSpec compilation failed with exit code {process.ExitCode}");
+                return compileLog;
             }
 
             logger.LogInfo("✅ TypeSpec compilation completed successfully.\n");
+            return string.Empty;
         }
 
         public async Task PrepareSdkFilesAsync()
@@ -80,17 +80,14 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             await File.WriteAllTextAsync(csprojPath, content);
         }
 
-        public async Task BuildSdkAsync()
+        public async Task<List<AzcError>> BuildSdkAsync()
         {
             logger.LogInfo("⏳ Building SDK...\n");
 
-            var outputPath = Path.Combine(workspacePath, sdkOutputPath);
-            var csprojPath = FindGeneratedCsprojFile(outputPath);
+            var csprojPath = FindGeneratedCsprojFile(Path.Combine(workspacePath, sdkOutputPath));
 
             if (string.IsNullOrEmpty(csprojPath))
                 throw new Exception("Could not find generated .csproj file for building.");
-
-            var buildDir = Path.GetDirectoryName(csprojPath);
 
             var process = new Process
             {
@@ -98,7 +95,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 {
                     FileName = "dotnet",
                     Arguments = "build --no-incremental",
-                    WorkingDirectory = buildDir,
+                    WorkingDirectory = Path.GetDirectoryName(csprojPath),
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -111,38 +108,24 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             var error = await process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
 
-            Directory.CreateDirectory(logPath);
-
             var fullBuildOutput = $"{output}\n{error}";
             var azcErrors = ExtractAzcErrors(fullBuildOutput);
 
-            var azcErrorPath = Path.Combine(logPath, "azc-errors.txt");
-            var azcBackupPath = Path.Combine(logPath, $"azc-errors-{DateTime.Now:yyyyMMdd_HHmmss}.txt");
-
-            await File.WriteAllTextAsync(azcErrorPath, azcErrors);
-            await File.WriteAllTextAsync(azcBackupPath, azcErrors);
-
-            logger.LogInfo($"The generator found following AZC errors:\n{azcErrors}\n");
-
-            var logFile = Path.Combine(logPath, "build-output.log");
-            await File.WriteAllTextAsync(logFile, fullBuildOutput);
-
             if (process.ExitCode != 0)
             {
-                throw new Exception($"SDK build failed with exit code {process.ExitCode}. Check log: {logFile}");
+                throw new Exception($"SDK build failed with exit code {process.ExitCode}.\n{fullBuildOutput}");
             }
 
             logger.LogInfo("✅ SDK build completed.\n");
+            return GetAzcErrorsDetails(azcErrors);
         }
 
-        public List<AzcError> GetAzcErrorsDetails()
+        private List<AzcError> GetAzcErrorsDetails(string buildLog)
         {
-            var path = Path.Combine(logPath, "azc-errors.txt");
-            if (!File.Exists(path)) return new List<AzcError>();
-
             var rx = new Regex(@"(?<code>AZC\d{4}):\s*(?<msg>.*)", RegexOptions.Compiled);
             var list = new List<AzcError>();
-            foreach (var line in File.ReadAllLines(path))
+            
+            foreach (var line in buildLog.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries))
             {
                 var m = rx.Match(line);
                 if (m.Success)
@@ -151,7 +134,8 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                         Message = m.Groups["msg"].Value
                     });
             }
-            return list; 
+            
+            return list;
         }
 
         public async Task CreateBackupAsync(string prefix = "")
@@ -164,19 +148,9 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             string backupName = $"{prefix}src-backup-{timestamp}.zip";
             string backupZipPath = Path.Combine(backupRoot, backupName);
 
-            // Use ZipFile to compress the src folder
             await Task.Run(() => ZipFile.CreateFromDirectory(srcFolder, backupZipPath, CompressionLevel.Optimal, includeBaseDirectory: false));
 
             logger.LogInfo($"📦 Backup created at: {backupZipPath}");
-        }
-
-        public int GetAzcErrorCount()
-        {
-            var path = Path.Combine(logPath, "azc-errors.txt");
-            if (!File.Exists(path)) return 0;
-
-            return File.ReadLines(path)
-                       .Count(line => !string.IsNullOrWhiteSpace(line));
         }
 
         private string FindGeneratedCsprojFile(string searchPath)
