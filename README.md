@@ -2,7 +2,7 @@
 
 This repository serves two main purposes:
 1. Demonstrates how to generate a standalone C# SDK from TypeSpec definitions
-2. Provides an AI-powered tool (AzcErrorFixer) to automatically fix AZC analyzer violations
+2. Provides an AI-powered tool (AzcErrorFixer) to automatically fix AZC analyzer violations and compilation errors
 
 ## Repository Structure
 
@@ -10,23 +10,25 @@ This repository serves two main purposes:
 ├── src/                           - TypeSpec source files
 │   ├── main.tsp                  - Main TypeSpec definitions
 │   └── client.tsp                - Client customizations
-├── AzcErrorFixer/               - Automated AZC error fixing tool
-├── helper/                      - Reference implementations
-└── Directory.Build.props        - Project-wide MSBuild properties
+├── AzcErrorFixer/                - Automated AZC error fixing tool
+├── helper/                       - Reference implementations
+└── Directory.Build.props         - Project-wide MSBuild properties
 ```
-
 
 ### AzcErrorFixer Tool
 
 ### Overview
-AzcErrorFixer is an AI-powered tool that automatically detects and fixes AZC analyzer violations in TypeSpec files. It uses Azure AI to analyze error logs and generate appropriate fixes in the client.tsp file.
+AzcErrorFixer is an AI-powered tool that automatically detects and fixes both AZC analyzer violations and TypeSpec compilation errors in TypeSpec files. It uses Azure AI to analyze error logs and generate appropriate fixes in the client.tsp file, with support for iterative compilation error fixing.
 
 ### Features
-- **Automated Error Detection**: Scans TypeSpec output for AZC violations
+- **Automated Error Detection**: Scans TypeSpec output for AZC violations and compilation errors
 - **AI-Powered Analysis**: Uses Azure AI to understand and fix violations
 - **Iterative Fixing**: Multiple passes to resolve all issues
 - **Smart Client.tsp Generation**: Creates or updates client.tsp with proper customizations
 - **Validation**: Ensures fixes comply with Azure SDK guidelines
+- **Compilation Error Recovery**: Detects and fixes TypeSpec compilation errors
+- **Resource Management**: Efficient cleanup of AI resources between iterations
+- **Backup Creation**: Automatic backup of source files before modifications
 
 ### Prerequisites
 - Azure AI resource with deployed model (e.g., GPT-4)
@@ -65,7 +67,68 @@ The tool will:
 - Upload TypeSpec files and error logs
 - Generate fixes for detected violations
 - Update client.tsp with corrections
-- Validate the changes
+- Validate changes and fix compilation errors
+- Create backups before modifications
+- Clean up resources between iterations
+
+### Error Handling Process
+
+1. **AZC Error Resolution**
+- Detects AZC violations in build output
+- Generates fixes using AI analysis
+- Updates client.tsp with corrections
+- Validates changes against SDK guidelines
+
+2. **Compilation Error Resolution**
+- Detects TypeSpec compilation errors
+- Attempts multiple fix iterations if needed
+- Validates successful compilation
+- Maximum retry attempts configurable
+
+3. **Resource Management**
+- Creates backups before modifications
+- Manages AI agent resources efficiently
+- Cleans up threads and vector stores between iterations
+- Maintains agent context for improved performance
+
+### Error Fixers
+
+The tool includes an extensible error fixing system located in the `Core/ErrorFixers` directory. You can easily add support for new AZC error types:
+
+1. **Available Error Fixers**
+- `Azc00012FixerTool.cs`: Handles single-word type name violations
+- `Azc00030FixerTool.cs`: Handles model naming convention violations
+
+2. **Adding New Error Fixers**
+To add support for a new AZC error type:
+
+```csharp
+public class NewAzcErrorFixerTool : IErrorFixerTool
+{
+    public string ErrorCode => "AZC####"; // Your error code
+    
+    public string GetFixSuggestion(AzcError error)
+    {
+        // Implement your fixing logic here
+        return "Your fix suggestion";
+    }
+}
+```
+
+3. **Registration**
+Register your new fixer in `Startup.cs`:
+```csharp
+services.AddTransient<IErrorFixerTool, NewAzcErrorFixerTool>();
+```
+
+4. **Best Practices for Error Fixers**
+- Keep each fixer focused on a single error type
+- Provide clear, actionable suggestions
+- Include examples in comments
+- Add test cases for your fixer
+- Document any special handling requirements
+
+The error fixers work together with the AI agent to provide targeted solutions for specific AZC violations, making the fixes more reliable and consistent.
 
 ### Common Scenarios
 
@@ -98,14 +161,10 @@ The tool can handle multiple AZC errors in a single pass:
 - Review error logs for specific AZC violations
 - Check client.tsp syntax
 - Verify TypeSpec compiler version
+- Examine compilation error details
 
-3. **Performance Optimization**
-- Adjust MaxIterations in settings
-- Monitor vector store indexing
-- Check file upload sizes
-
-## Contributing
-Contributions are welcome! Please read our contributing guidelines and submit pull requests for any improvements.
-
-## License
-[MIT License](LICENSE)
+3. **Performance Issues**
+- Check network connectivity
+- Monitor resource cleanup between iterations
+- Verify AI model deployment status
+- Review backup creation success
