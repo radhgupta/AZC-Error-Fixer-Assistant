@@ -31,24 +31,24 @@ Return **only** this JSON:
 {
   ""UpdatedClientTsp"": ""<complete client.tsp content here>""
 
-}");
+}
+Do not include any additional text or explanations outside of this JSON structure.");
             return sb.ToString();
         }
 
-        public string BuildCompileFixPrompt(IEnumerable<string> compileSnippets)
+        public string BuildCompileFixPrompt(string compileError)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("⚠️ Build failed with errors—please fix syntax in UpdatedClientTsp:")
-              .AppendLine();
-            foreach (var s in compileSnippets)
-            {
-                  sb.AppendLine(s).AppendLine();
-            }
-            sb.AppendLine(@"
-Return **only** this JSON:
-{
- ""UpdatedClientTsp"": ""<complete client.tsp content here>""
-}");
+            sb.AppendLine("The updated client.tsp you provided generated the following compilation error:")
+            .AppendLine()
+            .AppendLine(compileError)
+            .AppendLine()
+            .AppendLine(@"Please fix all the issues in client.tsp so that it compiles cleanly, and return **only** this JSON:
+        {
+            ""UpdatedClientTsp"": ""<complete client.tsp content here>""
+        }
+        Do not include any additional text or explanations outside of this JSON structure.");
+            
             return sb.ToString();
         }
     }

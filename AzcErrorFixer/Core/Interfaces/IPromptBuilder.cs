@@ -12,6 +12,6 @@ namespace AzcAnalyzerFixer.Core.Interfaces
         /// <summary>
         /// Builds a prompt to fix compile‐time errors.
         /// </summary>
-        string BuildCompileFixPrompt(IEnumerable<string> compileSnippets);
+        string BuildCompileFixPrompt(string compileError);
     }
 }

@@ -22,16 +22,14 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
     {
         private readonly PersistentAgentsClient client;
         private readonly ILoggerService logger;
-        private readonly FileHelper fileHelper;
         private readonly string model;
         private PersistentAgent? agent;
 
         private const string AgentPrompt = Configuration.AppSettings.initialPrompt;
 
-        public AzcAgentService(string projectEndpoint, string model, ILoggerService loggerService, FileHelper fileHelper)
+        public AzcAgentService(string projectEndpoint, string model, ILoggerService loggerService)
         {
             client = new PersistentAgentsClient(projectEndpoint, new DefaultAzureCredential());
-            this.fileHelper = fileHelper;
             this.logger = loggerService;
             this.model = model ?? throw new ArgumentNullException(nameof(model), "Model must be provided.");
             agent = null;
@@ -61,30 +59,6 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 Console.WriteLine($"🗑️ Deleting agent: {agent.Name} ({agent.Id})");
                 await client.Administration.DeleteAgentAsync(agent.Id, ct);
             }
-
-            // Delete all threads
-            await foreach (var thread in client.Threads.GetThreadsAsync(cancellationToken: ct))
-            {
-                Console.WriteLine($"🗑️ Deleting thread: {thread.Id}");
-                await client.Threads.DeleteThreadAsync(thread.Id, ct);
-            }
-
-            // Delete all vector stores
-            await foreach (var store in client.VectorStores.GetVectorStoresAsync(cancellationToken: ct))
-            {
-                Console.WriteLine($"🗑️ Deleting vector store: {store.Name} ({store.Id})");
-                await client.VectorStores.DeleteVectorStoreAsync(store.Id, ct);
-            }
-
-            // Delete all uploaded files
-            var files = await client.Files.GetFilesAsync(cancellationToken: ct);
-            foreach (var file in files.Value)
-            {
-                Console.WriteLine($"🗑️ Deleting file: {file.Filename} ({file.Id})");
-                await client.Files.DeleteFileAsync(file.Id, ct);
-            }
-
-            Console.WriteLine("✅ Cleanup complete.\n");
         }
 
         public async Task CreateAgentAsync(CancellationToken ct)
@@ -132,44 +106,80 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             logger.LogInfo($"🔄 Agent vector store updated to: {vectorStoreId}");
         }
 
-        public async Task FixAzcErrorsAsync(string tspFolderPath, string logFilePath, string suggestions)
+        public async Task<string> InitializeAgentEnvironmentAsync(string tspFolderPath)
         {
-            var uploadedFiles = await UploadTspAndLogAsync(tspFolderPath, logFilePath);
+            // Upload files and prepare environment
+            var uploadedFiles = await UploadTspAndLogAsync(tspFolderPath);
             if (uploadedFiles.Count == 0)
                 throw new InvalidOperationException("No files were uploaded. Cannot proceed with AZC error fixing.");
-            logger.LogInfo($"Uploaded {uploadedFiles} files to the agent vector store.");
+
+            logger.LogInfo($"Uploaded {uploadedFiles.Count} files to the agent vector store.");
+
+            // Wait for indexing and create vector store
             await WaitForIndexingAsync(uploadedFiles);
             var vectorStoreId = await CreateVectorStoreAsync(uploadedFiles);
             await UpdateAgentVectorStoreAsync(vectorStoreId, CancellationToken.None);
 
+            // Create and return thread
             PersistentAgentThread thread = await client.Threads.CreateThreadAsync();
-            string agentMessage = $@"Please apply the following AZC suggestions to the client.tsp file. Apply the changes one by one and return the updated file in a JSON object, Here are the suggestions: {suggestions}";
-            await client.Messages.CreateMessageAsync(thread.Id, MessageRole.User, agentMessage);
+            logger.LogInfo($"Created new thread with ID: {thread.Id}");
 
-            ThreadRun run = await client.Runs.CreateRunAsync(thread.Id, agent.Id);
+            return thread.Id;
+        }
+
+        public async Task CleanupAsync(CancellationToken ct)
+        {
+            // Delete all threads
+            await foreach (var thread in client.Threads.GetThreadsAsync(cancellationToken: ct))
+            {
+                Console.WriteLine($"🗑️ Deleting thread: {thread.Id}");
+                await client.Threads.DeleteThreadAsync(thread.Id, ct);
+            }
+
+            // Delete all vector stores
+            await foreach (var store in client.VectorStores.GetVectorStoresAsync(cancellationToken: ct))
+            {
+                Console.WriteLine($"🗑️ Deleting vector store: {store.Name} ({store.Id})");
+                await client.VectorStores.DeleteVectorStoreAsync(store.Id, ct);
+            }
+
+            // Delete all uploaded files
+            var files = await client.Files.GetFilesAsync(cancellationToken: ct);
+            foreach (var file in files.Value)
+            {
+                Console.WriteLine($"🗑️ Deleting file: {file.Filename} ({file.Id})");
+                await client.Files.DeleteFileAsync(file.Id, ct);
+            }
+
+            Console.WriteLine("✅ Cleanup complete.\n");
+        }
+        public async Task FixAzcErrorsAsync(string tspFolderPath, string azcSuggestions, string threadId)
+        {
+            await client.Messages.CreateMessageAsync(threadId, MessageRole.User, azcSuggestions);
+
+            ThreadRun run = await client.Runs.CreateRunAsync(threadId, agent.Id);
             RunStatus status;
-
             do
             {
                 await Task.Delay(5000);
-                run = await client.Runs.GetRunAsync(thread.Id, run.Id);
+                run = await client.Runs.GetRunAsync(threadId, run.Id);
                 status = run.Status;
                 logger.LogInfo($"Run status: {status}");
             }
             while (status == RunStatus.Queued || status == RunStatus.InProgress);
 
-            var response = await ReadResponseAsync(thread.Id);
+            var response = await ReadResponseAsync(threadId);
             var json = JsonHelper.ExtractJsonPayload(response);
             var result = JsonSerializer.Deserialize<AzcFixResult>(json);
 
             if (string.IsNullOrWhiteSpace(result?.UpdatedClientTsp))
                 throw new Exception("No updated client.tsp provided by agent.");
 
-            fileHelper.WriteClientTsp(tspFolderPath, result.UpdatedClientTsp);
+            WriteClientTsp(tspFolderPath, result.UpdatedClientTsp);
             logger.LogInfo("✅ client.tsp updated.");
         }
 
-        private async Task<List<string>> UploadTspAndLogAsync(string folderPath, string logPath)
+        private async Task<List<string>> UploadTspAndLogAsync(string folderPath)
         {
             var uploadedIds = new List<string>();
 
@@ -186,19 +196,6 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 if (uploaded?.Value?.Id != null)
                     uploadedIds.Add(uploaded.Value.Id);
             }
-
-            if (File.Exists(logPath))
-            {
-
-                var logTempPath = Path.Combine(Path.GetTempPath(), $"azc-errors.txt");
-                var logContent = await File.ReadAllTextAsync(logPath);
-                await File.WriteAllTextAsync(logTempPath, logContent, Encoding.UTF8);
-                var logUploaded = await client.Files.UploadFileAsync(logTempPath, PersistentAgentFilePurpose.Agents);
-                if (logUploaded?.Value?.Id != null)
-                    uploadedIds.Add(logUploaded.Value.Id);
-                logger.LogInfo($"Uploaded log file {logPath}");
-            }
-
             return uploadedIds;
         }
 
@@ -254,6 +251,12 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             }
 
             return string.Join("\n", allText);
+        }
+
+        private void WriteClientTsp(string TspPath, string content)
+        {
+            string clientTspPath = Path.Combine(TspPath, "client.tsp");
+            File.WriteAllText(clientTspPath, content);
         }
     }
 }

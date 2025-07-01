@@ -27,18 +27,12 @@ namespace AzcAnalyzerFixer.Composition
             // Logging
             services.AddSingleton<ILoggerService, ConsoleLoggerService>();
 
-            // File helper (needs paths from config)
-            services.AddSingleton<FileHelper>(_ =>
-                new FileHelper(Configuration.AppSettings.MainTspPath,
-                               Configuration.AppSettings.LogPath));
-
             // Agent service
             services.AddSingleton<IAzcAgentService>(sp =>
                 new AzcAgentService(
                     Configuration.AppSettings.ProjectEndpoint,
                     Configuration.AppSettings.Model,
-                    sp.GetRequiredService<ILoggerService>(),
-                    sp.GetRequiredService<FileHelper>()));
+                    sp.GetRequiredService<ILoggerService>()));
 
             // Build service
             services.AddSingleton<ITypeSpecBuildService>(sp =>
