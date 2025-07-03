@@ -26,7 +26,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
         public async Task<string> CompileTypeSpecAsync()
         {
-            logger.LogInfo("⏳ Compiling TypeSpec and generating SDK...\n");
+            logger.LogInfo("⏳ Compiling TypeSpec and generating SDK...");
 
             var process = new Process
             {
@@ -82,7 +82,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
         public async Task<List<AzcError>> BuildSdkAsync()
         {
-            logger.LogInfo("⏳ Building SDK...\n");
+            logger.LogInfo("⏳ Building SDK...");
 
             var csprojPath = FindGeneratedCsprojFile(Path.Combine(workspacePath, sdkOutputPath));
 
@@ -150,7 +150,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
             await Task.Run(() => ZipFile.CreateFromDirectory(srcFolder, backupZipPath, CompressionLevel.Optimal, includeBaseDirectory: false));
 
-            logger.LogInfo($"📦 Backup created at: {backupZipPath}");
+            // logger.LogInfo($"📦 Backup created at: {backupZipPath}");
         }
 
         private string FindGeneratedCsprojFile(string searchPath)

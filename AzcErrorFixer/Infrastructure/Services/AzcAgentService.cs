@@ -41,7 +41,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
             if (thread?.Value?.Id != null)
             {
-                Console.WriteLine("✅ Successfully connected to Azure AI Foundry and created a thread.");
+                // Console.WriteLine("✅ Successfully connected to Azure AI Foundry and created a thread.");
             }
             else
             {
@@ -51,12 +51,12 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
         public async Task DeleteAgentsAsync(CancellationToken ct)
         {
-            Console.WriteLine("🧹 Cleaning up agents, threads, vector stores, and files...");
+            // Console.WriteLine("🧹 Cleaning up agents, threads, vector stores, and files...");
 
             // Delete all agents
             await foreach (var agent in client.Administration.GetAgentsAsync(cancellationToken: ct))
             {
-                Console.WriteLine($"🗑️ Deleting agent: {agent.Name} ({agent.Id})");
+                // Console.WriteLine($"🗑️ Deleting agent: {agent.Name} ({agent.Id})");
                 await client.Administration.DeleteAgentAsync(agent.Id, ct);
             }
         }
@@ -103,7 +103,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 cancellationToken: ct
             );
 
-            logger.LogInfo($"🔄 Agent vector store updated to: {vectorStoreId}");
+            // logger.LogInfo($"🔄 Agent vector store updated to: {vectorStoreId}");
         }
 
         public async Task<string> InitializeAgentEnvironmentAsync(string tspFolderPath)
@@ -113,7 +113,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             if (uploadedFiles.Count == 0)
                 throw new InvalidOperationException("No files were uploaded. Cannot proceed with AZC error fixing.");
 
-            logger.LogInfo($"Uploaded {uploadedFiles.Count} files to the agent vector store.");
+            // logger.LogInfo($"Uploaded {uploadedFiles.Count} files to the agent vector store.");
 
             // Wait for indexing and create vector store
             await WaitForIndexingAsync(uploadedFiles);
@@ -122,7 +122,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
             // Create and return thread
             PersistentAgentThread thread = await client.Threads.CreateThreadAsync();
-            logger.LogInfo($"Created new thread with ID: {thread.Id}");
+            // logger.LogInfo($"Created new thread with ID: {thread.Id}");
 
             return thread.Id;
         }
@@ -132,14 +132,14 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             // Delete all threads
             await foreach (var thread in client.Threads.GetThreadsAsync(cancellationToken: ct))
             {
-                Console.WriteLine($"🗑️ Deleting thread: {thread.Id}");
+                // Console.WriteLine($"🗑️ Deleting thread: {thread.Id}");
                 await client.Threads.DeleteThreadAsync(thread.Id, ct);
             }
 
             // Delete all vector stores
             await foreach (var store in client.VectorStores.GetVectorStoresAsync(cancellationToken: ct))
             {
-                Console.WriteLine($"🗑️ Deleting vector store: {store.Name} ({store.Id})");
+                // Console.WriteLine($"🗑️ Deleting vector store: {store.Name} ({store.Id})");
                 await client.VectorStores.DeleteVectorStoreAsync(store.Id, ct);
             }
 
@@ -147,11 +147,11 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             var files = await client.Files.GetFilesAsync(cancellationToken: ct);
             foreach (var file in files.Value)
             {
-                Console.WriteLine($"🗑️ Deleting file: {file.Filename} ({file.Id})");
+                // Console.WriteLine($"🗑️ Deleting file: {file.Filename} ({file.Id})");
                 await client.Files.DeleteFileAsync(file.Id, ct);
             }
 
-            Console.WriteLine("✅ Cleanup complete.\n");
+            // Console.WriteLine("✅ Cleanup complete.\n");
         }
         public async Task FixAzcErrorsAsync(string tspFolderPath, string azcSuggestions, string threadId)
         {
@@ -164,7 +164,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 await Task.Delay(5000);
                 run = await client.Runs.GetRunAsync(threadId, run.Id);
                 status = run.Status;
-                logger.LogInfo($"Run status: {status}");
+                // logger.LogInfo($"Run status: {status}");
             }
             while (status == RunStatus.Queued || status == RunStatus.InProgress);
 
@@ -176,7 +176,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 throw new Exception("No updated client.tsp provided by agent.");
 
             WriteClientTsp(tspFolderPath, result.UpdatedClientTsp);
-            logger.LogInfo("✅ client.tsp updated.");
+            logger.LogInfo("\n✅ client.tsp updated. \n");
         }
 
         private async Task<List<string>> UploadTspAndLogAsync(string folderPath)
@@ -192,7 +192,6 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 var finalContent = await File.ReadAllTextAsync(txtTempPath);
 
                 var uploaded = await client.Files.UploadFileAsync(txtTempPath, PersistentAgentFilePurpose.Agents);
-                logger.LogInfo($"Uploaded {file}");
                 if (uploaded?.Value?.Id != null)
                     uploadedIds.Add(uploaded.Value.Id);
             }
@@ -201,7 +200,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
 
         private async Task WaitForIndexingAsync(List<string> fileIds)
         {
-            logger.LogInfo("⏳ Waiting for file indexing to complete...");
+            // logger.LogInfo("⏳ Waiting for file indexing to complete...");
 
             var maxWaitTime = TimeSpan.FromSeconds(60);
             var pollingInterval = TimeSpan.FromSeconds(5);
@@ -213,12 +212,12 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
                 foreach (var fileId in fileIds)
                 {
                     PersistentAgentFileInfo file = await client.Files.GetFileAsync(fileId);
-                    logger.LogInfo($"📄 File {file.Filename} index status: {file.Status}");
+                    // logger.LogInfo($"📄 File {file.Filename} index status: {file.Status}");
                 }
 
                 if (allIndexed)
                 {
-                    logger.LogInfo("✅ All files indexed successfully.");
+                    // logger.LogInfo("✅ All files indexed successfully.");
                     return;
                 }
 
@@ -231,7 +230,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
         private async Task<string> CreateVectorStoreAsync(List<string> fileIds)
         {
             var store = await client.VectorStores.CreateVectorStoreAsync(fileIds, name: $"azc-{DateTime.Now:yyyyMMddHHmmss}");
-            logger.LogInfo($"Created vector store: {store.Value.Name} ({store.Value.Id})");
+            // logger.LogInfo($"Created vector store: {store.Value.Name} ({store.Value.Id})");
             await Task.Delay(10000);
             return store.Value.Id;
         }
@@ -245,7 +244,7 @@ namespace AzcAnalyzerFixer.Infrastructure.Services
             {
                 foreach (var content in message.ContentItems.OfType<MessageTextContent>())
                 {
-                    logger.LogInfo($"Message content: {content.Text}");
+                    // logger.LogInfo($"Message content: {content.Text}");
                     allText.Add(content.Text);
                 }
             }

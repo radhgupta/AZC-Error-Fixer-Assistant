@@ -30,7 +30,7 @@ namespace AzcAnalyzerFixer
             await agentService.TestConnectionAsync(CancellationToken.None).ConfigureAwait(false);
             await agentService.DeleteAgentsAsync(CancellationToken.None).ConfigureAwait(false);
             await agentService.CreateAgentAsync(CancellationToken.None).ConfigureAwait(false);
-            logger.LogInfo("✅ Connection successful.");
+            logger.LogInfo("✅ Connection successful.\n");
 
             int iteration = 0;
             bool errorsFixed = false;
@@ -41,7 +41,7 @@ namespace AzcAnalyzerFixer
                 string compilationErrors = await buildService.CompileTypeSpecAsync().ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(compilationErrors))
                 {
-                    logger.LogError($"❌ Compilation failed. Please provide valid TypeSpec files.\n{compilationErrors}");
+                    logger.LogError($"❌ Compilation failed. Please provide valid TypeSpec files.\n{compilationErrors}\n");
                     break;
                 }
                 await buildService.PrepareSdkFilesAsync().ConfigureAwait(false);
@@ -49,7 +49,7 @@ namespace AzcAnalyzerFixer
                 List<AzcError> analyzerErrors = await buildService.BuildSdkAsync().ConfigureAwait(false);
                 if (analyzerErrors.Count == 0)
                 {
-                    logger.LogInfo("✅ No AZC errors found. Exiting.");
+                    logger.LogInfo("✅ No AZC errors found. Exiting.\n");
                     break;
                 }
                 else
@@ -59,13 +59,13 @@ namespace AzcAnalyzerFixer
                     {
                         logger.LogError($"- {error.Code}: {error.Message}");
                     }
+                    logger.LogInfo("\n⏳ Starting to fix AZC errors...\n");
                 }
                 //Step 4: Create backup of typespec files
                 await buildService.CreateBackupAsync($"iteration-{iteration + 1}-").ConfigureAwait(false);
 
                 //Step 5: Generate AZC fix suggestions
                 string azcSuggestions = promptBuilder.BuildAzcFixPrompt(analyzerErrors, fixerTools);
-                logger.LogInfo($"🔍 AZC suggestions to agent: {azcSuggestions}");
 
                 //Step 6: Fix analyzer errors using AZC agent
                 string threadId = await agentService.InitializeAgentEnvironmentAsync(TypeSpecSrcPath);
@@ -80,11 +80,13 @@ namespace AzcAnalyzerFixer
                     isCompilationSuccessful = string.IsNullOrEmpty(updatedCompilationErrors);
                     if (!isCompilationSuccessful)
                     {
+                        logger.LogError($"⚠️ Found Compilation Errors. {updatedCompilationErrors}");
+                        logger.LogInfo("\n⏳ Starting to fix compilation errors...\n");
                         await agentService.FixAzcErrorsAsync(TypeSpecSrcPath, compilationError, threadId).ConfigureAwait(false);
                     }
                     else
                     {
-                        logger.LogInfo("✅ All Compilation errors fixed successfully!");
+                        logger.LogInfo("✅ No existing compilation errors found.\n");
                         break;
                     }
                 }
@@ -93,7 +95,7 @@ namespace AzcAnalyzerFixer
 
                 iteration++;
             }
-            logger.LogInfo("\nPress any key to exit...");
+            logger.LogInfo("Press any key to exit...");
             Console.ReadKey();
         }
     }
